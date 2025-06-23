@@ -5,6 +5,7 @@ import torch.nn as nn
 import math
 
 
+# TODO: add positional encoding (before or after patchifying?)
 class Patchify(nn.Module):
     def __init__(self, patch_size=14, model_dim=64):
         super().__init__()
@@ -19,28 +20,33 @@ class Patchify(nn.Module):
 
 # TODO: use multi-head attention (currently have single head)
 class Encoder(nn.Module):
-    def __init__(self, model_dim=64):
+    def __init__(self, model_dim=64, ffn_dim=32):
         super().__init__()
         self.model_dim = model_dim
         self.wq = nn.Linear(model_dim, 24, bias=False)
         self.wk = nn.Linear(model_dim, 24, bias=False)
         self.wv = nn.Linear(model_dim, 32, bias=False)
-        # TODO: extend wh into full 'feed-forward network' (i.e. two linear layers with ReLU in between)
-        self.wh = nn.Linear(32, model_dim, bias=False)
+        self.ffn = nn.Sequential(
+            nn.Linear(32, ffn_dim),
+            nn.ReLU(),
+            nn.Linear(ffn_dim, model_dim),
+        )
 
+    # TODO: add residual connection and layer normalization logic
     def forward(self, x):
         q = self.wq(x)
         k = self.wk(x)
         v = self.wv(x)
         kt = k.permute(0, 2, 1)
 
-        # do attention(Q, K, V) = softmax(QK^T / sqrt(dims)) · V
+        # do attention(Q, K, V) = softmax(QK^T / sqrt(dims)) · V to get hidden state
         attn_dot_product = torch.matmul(q, kt)
         attn_scaled = attn_dot_product / math.sqrt(self.model_dim)
         attn_probs = torch.softmax(attn_scaled, dim=1)
+        hidden = torch.matmul(attn_probs, v)
 
-        h1 = torch.matmul(attn_probs, v)
-        return self.wh(h1)
+        # pass attention output through feed-forward sub-layer
+        return self.ffn(hidden)
 
 
 class BaseClassifier(nn.Module):
