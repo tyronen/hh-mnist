@@ -15,6 +15,9 @@ hyperparameters = {
     "batch_size": 64,
     "learning_rate": 0.001,
     "epochs": 5,
+    "patch_size": 14,
+    "model_dim": 64,
+    "num_encoders": 6,
 }
 
 
@@ -42,9 +45,7 @@ def test(dataloader, model, loss_fn, device):
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
     test_loss /= num_batches
     correct /= size
-    logging.info(
-        f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n"
-    )
+    logging.info(f"Test Error: \n Accuracy: {(100 * correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
 
 
 def main():
@@ -52,30 +53,24 @@ def main():
     logging.info("Downloading MNIST dataset...")
 
     transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
-    training_data = datasets.MNIST(
-        root="data", train=True, download=True, transform=transform
-    )
-    test_data = datasets.MNIST(
-        root="data", train=False, download=True, transform=transform
-    )
+    training_data = datasets.MNIST(root="data", train=True, download=True, transform=transform)
+    test_data = datasets.MNIST(root="data", train=False, download=True, transform=transform)
 
-    stats_dataloader = DataLoader(
-        training_data, batch_size=len(training_data.data), shuffle=False
-    )
+    stats_dataloader = DataLoader(training_data, batch_size=len(training_data.data), shuffle=False)
     images, _ = next(iter(stats_dataloader))
     mean = images.mean()
     std = images.std()
 
-    train_dataloader = DataLoader(
-        training_data, batch_size=hyperparameters["batch_size"], shuffle=True
-    )
-    test_dataloader = DataLoader(
-        test_data, batch_size=hyperparameters["batch_size"], shuffle=False
-    )
+    train_dataloader = DataLoader(training_data, batch_size=hyperparameters["batch_size"], shuffle=True)
+    test_dataloader = DataLoader(test_data, batch_size=hyperparameters["batch_size"], shuffle=False)
 
     device = utils.get_device()
     logging.info(f"Using {device} device")
-    model = Classifier()
+    model = Classifier(
+        patch_size=hyperparameters["patch_size"],
+        model_dim=hyperparameters["model_dim"],
+        num_encoders=hyperparameters["num_encoders"],
+    )
     model.to(device)
 
     loss_fn = nn.CrossEntropyLoss()
