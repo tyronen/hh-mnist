@@ -17,6 +17,7 @@ hyperparameters = {
     "epochs": 5,
 }
 
+
 def train(dataloader, model, loss_fn, optimizer, device, epoch):
     model.train()
     for batch, (X, y) in enumerate(tqdm(dataloader, f"Training epoch {epoch + 1}")):
@@ -65,10 +66,12 @@ def main():
     mean = images.mean()
     std = images.std()
 
-
-
-    train_dataloader = DataLoader(training_data, batch_size=hyperparameters["batch_size"], shuffle=True)
-    test_dataloader = DataLoader(test_data, batch_size=hyperparameters["batch_size"], shuffle=False)
+    train_dataloader = DataLoader(
+        training_data, batch_size=hyperparameters["batch_size"], shuffle=True
+    )
+    test_dataloader = DataLoader(
+        test_data, batch_size=hyperparameters["batch_size"], shuffle=False
+    )
 
     device = utils.get_device()
     logging.info(f"Using {device} device")

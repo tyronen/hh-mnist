@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
 
+
 class Patchify(nn.Module):
-    def __init__(self):
+    def __init__(self, patch_size, features):
         super().__init__()
-        self.unfold = nn.Unfold(kernel_size=14, stride=14)
-        self.linear = nn.Linear(196, 64, bias=False)
+        self.unfold = nn.Unfold(kernel_size=patch_size, stride=patch_size)
+        self.linear = nn.Linear(patch_size**2, features, bias=False)
 
     def forward(self, x):
         patches = self.unfold(x)
@@ -14,12 +15,12 @@ class Patchify(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self):
+    def __init__(self, features):
         super().__init__()
-        self.wq = nn.Linear(64, 24, bias=False)
-        self.wk = nn.Linear(64, 24, bias=False)
-        self.wv = nn.Linear(64, 32, bias=False)
-        self.wh = nn.Linear(32, 64, bias=False)
+        self.wq = nn.Linear(features, 24, bias=False)
+        self.wk = nn.Linear(features, 24, bias=False)
+        self.wv = nn.Linear(features, 32, bias=False)
+        self.wh = nn.Linear(32, features, bias=False)
 
     def forward(self, x):
         q = self.wq(x)
@@ -33,11 +34,11 @@ class Encoder(nn.Module):
 
 
 class Classifier(nn.Module):
-    def __init__(self, num_encoders=6):
+    def __init__(self, num_encoders=6, patch_size=14, features=64):
         super().__init__()
-        self.patchify = Patchify()
-        self.encoders = nn.ModuleList([Encoder() for _ in range(num_encoders)])
-        self.linear = nn.Linear(64, 10)
+        self.patchify = Patchify(patch_size, features)
+        self.encoders = nn.ModuleList([Encoder(features) for _ in range(num_encoders)])
+        self.linear = nn.Linear(features, 10)
 
     def forward(self, x):
         patched = self.patchify(x)

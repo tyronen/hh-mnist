@@ -611,8 +611,8 @@ requires-dist = [
     { name = "notebook", specifier = ">=7.4.3" },
     { name = "streamlit", specifier = ">=1.46.0" },
     { name = "streamlit-drawable-canvas", specifier = ">=0.9.3" },
-    { name = "torch", specifier = ">=2.7.1" },
-    { name = "torchvision", specifier = ">=0.22.1" },
+    { name = "torch", specifier = ">=2.2.0" },
+    { name = "torchvision", specifier = ">=0.17.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
 ]
 
