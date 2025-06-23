@@ -1,5 +1,7 @@
 data/
 .idea/
+*.orig
+*.rej
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

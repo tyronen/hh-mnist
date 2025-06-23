@@ -17,9 +17,9 @@ hyperparameters = {
     "epochs": 5,
 }
 
-def train(dataloader, model, loss_fn, optimizer, device):
+def train(dataloader, model, loss_fn, optimizer, device, epoch):
     model.train()
-    for batch, (X, y) in tqdm(enumerate(dataloader)):
+    for batch, (X, y) in enumerate(tqdm(dataloader, f"Training epoch {epoch + 1}")):
         X, y = X.to(device), y.to(device)
         pred = model(X)
         loss = loss_fn(pred, y)
@@ -34,7 +34,7 @@ def test(dataloader, model, loss_fn, device):
     model.eval()
     test_loss, correct = 0, 0
     with torch.no_grad():
-        for X, y in dataloader:
+        for X, y in tqdm(dataloader, "Testing"):
             X, y = X.to(device), y.to(device)
             pred = model(X)
             test_loss += loss_fn(pred, y).item()
@@ -47,15 +47,26 @@ def test(dataloader, model, loss_fn, device):
 
 
 def main():
+    utils.setup_logging()
     logging.info("Downloading MNIST dataset...")
+
     transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
     training_data = datasets.MNIST(
         root="data", train=True, download=True, transform=transform
     )
-
     test_data = datasets.MNIST(
         root="data", train=False, download=True, transform=transform
     )
+
+    stats_dataloader = DataLoader(
+        training_data, batch_size=len(training_data.data), shuffle=False
+    )
+    images, _ = next(iter(stats_dataloader))
+    mean = images.mean()
+    std = images.std()
+
+
+
     train_dataloader = DataLoader(training_data, batch_size=hyperparameters["batch_size"], shuffle=True)
     test_dataloader = DataLoader(test_data, batch_size=hyperparameters["batch_size"], shuffle=False)
 
@@ -67,13 +78,14 @@ def main():
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=hyperparameters["learning_rate"])
 
-    for t in range(hyperparameters["epochs"]):
-        logging.info(f"Epoch {t+1}\n-------------------------------")
-        train(train_dataloader, model, loss_fn, optimizer, device)
-        test(test_dataloader, model, loss_fn, device)
+    for epoch in range(hyperparameters["epochs"]):
+        train(train_dataloader, model, loss_fn, optimizer, device, epoch)
 
+    test(test_dataloader, model, loss_fn, device)
     model_dict = {
         "model_state_dict": model.state_dict(),
+        "mean": mean,
+        "std": std,
     }
     torch.save(model_dict, utils.MODEL_FILE)
     logging.info(f"Saved PyTorch Model State to {utils.MODEL_FILE}")
