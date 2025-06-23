@@ -12,10 +12,10 @@ import utils
 from models import Classifier
 
 hyperparameters = {
-    "batch_size": 64,
+    "batch_size": 128,
     "learning_rate": 0.001,
     "epochs": 5,
-    "patch_size": 14,
+    "patch_size": 7,  # MNIST images are 28x28, so patch size of 7 -> 16 patches
     "model_dim": 64,
     "num_encoders": 6,
 }

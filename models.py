@@ -5,9 +5,31 @@ import torch.nn as nn
 import math
 
 
-# TODO: add positional encoding (before or after patchifying?)
+PE_MAX_LEN = 128  # max length of positional encoding, i.e. max number of patches from an image
+K_DIM = 24
+Q_DIM = 24
+V_DIM = 32
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, model_dim, max_len=PE_MAX_LEN):
+        super().__init__()
+
+        self.pe = torch.zeros(max_len, model_dim)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim))
+        self.pe[:, 0::2] = torch.sin(position * div_term)
+        self.pe[:, 1::2] = torch.cos(position * div_term)
+        self.pe = self.pe.unsqueeze(0)  # add batch dimension
+
+    def forward(self, x):
+        return x + self.pe[:, : x.size(1)]
+
+
+# TODO: add positional encoding (AFTER patchifying)
 class Patchify(nn.Module):
-    def __init__(self, patch_size=14, model_dim=64):
+    # think of each patch as an image token (i.e. as a word, if this was NLP)
+    def __init__(self, patch_size=7, model_dim=64):
         super().__init__()
         self.unfold = nn.Unfold(kernel_size=patch_size, stride=patch_size)
         self.linear = nn.Linear(patch_size**2, model_dim, bias=False)
@@ -20,14 +42,14 @@ class Patchify(nn.Module):
 
 # TODO: use multi-head attention (currently have single head)
 class Encoder(nn.Module):
-    def __init__(self, model_dim=64, ffn_dim=32):
+    def __init__(self, model_dim=64, ffn_dim=64):
         super().__init__()
         self.model_dim = model_dim
-        self.wq = nn.Linear(model_dim, 24, bias=False)
-        self.wk = nn.Linear(model_dim, 24, bias=False)
-        self.wv = nn.Linear(model_dim, 32, bias=False)
+        self.wq = nn.Linear(model_dim, Q_DIM, bias=False)
+        self.wk = nn.Linear(model_dim, K_DIM, bias=False)
+        self.wv = nn.Linear(model_dim, V_DIM, bias=False)
         self.ffn = nn.Sequential(
-            nn.Linear(32, ffn_dim),
+            nn.Linear(V_DIM, ffn_dim),
             nn.ReLU(),
             nn.Linear(ffn_dim, model_dim),
         )
@@ -39,20 +61,22 @@ class Encoder(nn.Module):
         v = self.wv(x)
         kt = k.permute(0, 2, 1)
 
-        # do attention(Q, K, V) = softmax(QK^T / sqrt(dims)) · V to get hidden state
+        # do attention(Q, K, V) = softmax(Q·K^T / sqrt(dims))·V to get hidden state (where · is dot product)
         attn_dot_product = torch.matmul(q, kt)
-        attn_scaled = attn_dot_product / math.sqrt(self.model_dim)
+        attn_scaled = attn_dot_product / math.sqrt(K_DIM)
         attn_probs = torch.softmax(attn_scaled, dim=1)
         hidden = torch.matmul(attn_probs, v)
 
-        # pass attention output through feed-forward sub-layer
+        # pass attention output through feed-forward sub-layer (basic MLP)
         return self.ffn(hidden)
 
 
 class BaseClassifier(nn.Module):
-    def __init__(self, patch_size=14, model_dim=64, num_encoders=6):
+    def __init__(self, patch_size=7, model_dim=64, num_encoders=6):
         super().__init__()
         self.patchify = Patchify(patch_size, model_dim)
+        # compute fixed positional encodings once
+        # here, 'multi-head dot-product self attention blocks [...] completely replace convolutions' (see 16x16)
         self.encoders = nn.ModuleList([Encoder(model_dim) for _ in range(num_encoders)])
 
     def forward(self, x):
