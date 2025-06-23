@@ -2,12 +2,14 @@ import torch
 from torch import nn
 from torch import optim
 from torch.utils.data import DataLoader
-from torchvision import datasets, transforms
+from torchvision import datasets
+from torchvision.transforms import v2
 import logging
 
 from tqdm import tqdm
 
 import utils
+from models import Classifier
 
 hyperparameters = {
     "batch_size": 64,
@@ -46,19 +48,20 @@ def test(dataloader, model, loss_fn, device):
 
 def main():
     logging.info("Downloading MNIST dataset...")
+    transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
     training_data = datasets.MNIST(
-        root="data", train=True, download=True, transform=transforms.ToTensor
+        root="data", train=True, download=True, transform=transform
     )
 
     test_data = datasets.MNIST(
-        root="data", train=False, download=True, transform=transforms.ToTensor
+        root="data", train=False, download=True, transform=transform
     )
     train_dataloader = DataLoader(training_data, batch_size=hyperparameters["batch_size"], shuffle=True)
     test_dataloader = DataLoader(test_data, batch_size=hyperparameters["batch_size"], shuffle=False)
 
     device = utils.get_device()
     logging.info(f"Using {device} device")
-    model = nn.Module()
+    model = Classifier()
     model.to(device)
 
     loss_fn = nn.CrossEntropyLoss()
