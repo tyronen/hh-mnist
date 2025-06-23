@@ -1,7 +1,8 @@
 import logging
 import torch
 
-MODEL_FILE = "data/models.pth"
+SIMPLE_MODEL_FILE = "data/simple.pth"
+COMPLEX_MODEL_FILE = "data/complex.pth"
 
 
 def setup_logging():

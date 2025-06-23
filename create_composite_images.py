@@ -4,10 +4,14 @@ from torchvision import datasets
 from torchvision.transforms import v2
 import random
 import os
-from collections import defaultdict
 import utils
 from tqdm import tqdm
 import logging
+
+# Define special tokens
+START_TOKEN = 10  # After digits 0-9
+END_TOKEN = 11
+PAD_TOKEN = 12  # For padding sequences
 
 
 def create_composite_image(mnist_images, mnist_labels, num_images):
@@ -33,17 +37,34 @@ def create_composite_image(mnist_images, mnist_labels, num_images):
         ]  # MNIST images are (1, 28, 28)
         labels.append(mnist_labels[idx])
 
-    # Pad labels with -1 for empty positions (so we always have 4 labels)
-    while len(labels) < 4:
-        labels.append(-1)
+    return composite, labels
 
-    return composite, torch.tensor(labels)
+
+def create_transformer_seqs(labels):
+    """Create input and output sequences for transformer training"""
+    # Input: START_TOKEN + labels (padded to max length)
+    # Output: labels + END_TOKEN (padded to max length)
+
+    max_seq_len = 5  # START + up to 4 labels, or up to 4 labels + END
+
+    # Input sequence: [START_TOKEN, label1, label2, ..., PAD, PAD]
+    input_seq = [START_TOKEN] + labels
+    while len(input_seq) < max_seq_len:
+        input_seq.append(PAD_TOKEN)
+
+    # Output sequence: [label1, label2, ..., END_TOKEN]
+    output_seq = labels + [END_TOKEN]
+    while len(output_seq) < max_seq_len:
+        output_seq.append(PAD_TOKEN)
+
+    return torch.tensor(input_seq), torch.tensor(output_seq)
 
 
 def generate_composite_dataset(mnist_dataset, size, distribution):
     """Generate composite dataset with given size and distribution"""
     composite_images = []
-    composite_labels = []
+    input_seqs = []
+    output_seqs = []
 
     # Convert MNIST data to lists for easier random access
     mnist_images = []
@@ -64,17 +85,22 @@ def generate_composite_dataset(mnist_dataset, size, distribution):
         else:  # 10% - 1 image
             num_images = 1
 
-        composite_img, composite_label = create_composite_image(
+        composite_img, labels = create_composite_image(
             mnist_images, mnist_labels, num_images
         )
-
+        input_seq, output_seq = create_transformer_seqs(labels)
         composite_images.append(composite_img)
-        composite_labels.append(composite_label)
+        input_seqs.append(input_seq)
+        output_seqs.append(output_seq)
 
-    return torch.stack(composite_images), torch.stack(composite_labels)
+    return (
+        torch.stack(composite_images),
+        torch.stack(input_seqs),
+        torch.stack(output_seqs),
+    )
 
 
-def split_dataset(images, labels, val_split=0.2):
+def split_dataset(images, input_seqs, output_seqs, val_split=0.2):
     """Split dataset into training and validation sets"""
     dataset_size = len(images)
     val_size = int(dataset_size * val_split)
@@ -86,35 +112,43 @@ def split_dataset(images, labels, val_split=0.2):
     val_indices = indices[train_size:]
 
     train_images = images[train_indices]
-    train_labels = labels[train_indices]
+    train_input_seqs = input_seqs[train_indices]
+    train_output_seqs = output_seqs[train_indices]
+
     val_images = images[val_indices]
-    val_labels = labels[val_indices]
+    val_input_seqs = input_seqs[val_indices]
+    val_output_seqs = output_seqs[val_indices]
 
-    return train_images, train_labels, val_images, val_labels
+    return (
+        train_images,
+        train_input_seqs,
+        train_output_seqs,
+        val_images,
+        val_input_seqs,
+        val_output_seqs,
+    )
 
 
-def save_torch_dataset(images, labels, filepath):
+def save_torch_dataset(images, input_seqs, output_seqs, filepath):
     """Save dataset as torch tensors"""
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
-    torch.save({"images": images, "labels": labels}, filepath)
+    torch.save(
+        {
+            "images": images,
+            "input_seqs": input_seqs,
+            "output_seqs": output_seqs,
+            "vocab_info": {
+                "start_token": START_TOKEN,
+                "end_token": END_TOKEN,
+                "pad_token": PAD_TOKEN,
+                "vocab_size": 13,  # 0-9 digits + START + END + PAD
+            },
+        },
+        filepath,
+    )
 
     logging.info(f"Saved dataset to {filepath}")
-
-
-def log_dataset_stats(labels, dataset_name):
-    """print statistics about dataset distribution"""
-    counts = defaultdict(int)
-    for label_set in labels:
-        num_valid = (label_set != -1).sum().item()
-        counts[num_valid] += 1
-
-    logging.info(f"\n{dataset_name} distribution:")
-    for num_imgs in sorted(counts.keys()):
-        percentage = (counts[num_imgs] / len(labels)) * 100
-        logging.info(
-            f"  {num_imgs} images: {counts[num_imgs]} samples ({percentage:.1f}%)"
-        )
 
 
 def main():
@@ -147,25 +181,38 @@ def main():
     distribution = [0.4, 0.3, 0.2, 0.1]
 
     logging.info("Generating composite training dataset...")
-    all_train_images, all_train_labels = generate_composite_dataset(
-        training_data, original_train_size, distribution
+    all_train_images, all_train_input_seqs, all_train_output_seqs = (
+        generate_composite_dataset(training_data, original_train_size, distribution)
     )
 
     logging.info("Splitting training set into train/validation (80%/20%)...")
-    train_images, train_labels, val_images, val_labels = split_dataset(
-        all_train_images, all_train_labels, val_split=0.2
+    (
+        train_images,
+        train_input_seqs,
+        train_output_seqs,
+        val_images,
+        val_input_seqs,
+        val_output_seqs,
+    ) = split_dataset(
+        all_train_images, all_train_input_seqs, all_train_output_seqs, val_split=0.2
     )
 
     logging.info("Generating composite test dataset...")
-    test_images, test_labels = generate_composite_dataset(
+    test_images, test_input_seqs, test_output_seqs = generate_composite_dataset(
         test_data, test_size, distribution
     )
 
     # Save datasets
     logging.info("Saving datasets...")
-    save_torch_dataset(train_images, train_labels, "data/composite_train.pt")
-    save_torch_dataset(val_images, val_labels, "data/composite_val.pt")
-    save_torch_dataset(test_images, test_labels, "data/composite_test.pt")
+    save_torch_dataset(
+        train_images, train_input_seqs, train_output_seqs, "data/composite_train.pt"
+    )
+    save_torch_dataset(
+        val_images, val_input_seqs, val_output_seqs, "data/composite_val.pt"
+    )
+    save_torch_dataset(
+        test_images, test_input_seqs, test_output_seqs, "data/composite_test.pt"
+    )
 
     # logging.info statistics
     logging.info("Dataset Statistics:")
@@ -176,11 +223,6 @@ def main():
         f"Validation set: {len(val_images)} images of size {val_images[0].shape}"
     )
     logging.info(f"Test set: {len(test_images)} images of size {test_images[0].shape}")
-
-    # logging.info distribution statistics
-    log_dataset_stats(train_labels, "Training set")
-    log_dataset_stats(val_labels, "Validation set")
-    log_dataset_stats(test_labels, "Test set")
 
     logging.info("Composite datasets created successfully!")
 

@@ -90,8 +90,8 @@ def main():
         "mean": mean,
         "std": std,
     }
-    torch.save(model_dict, utils.MODEL_FILE)
-    logging.info(f"Saved PyTorch Model State to {utils.MODEL_FILE}")
+    torch.save(model_dict, utils.SIMPLE_MODEL_FILE)
+    logging.info(f"Saved PyTorch Model State to {utils.SIMPLE_MODEL_FILE}")
 
 
 if __name__ == "__main__":

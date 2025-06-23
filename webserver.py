@@ -12,15 +12,17 @@ import utils
 
 device = utils.get_device()
 
+
 @st.cache_resource
 def load_model():
     model = Classifier()
-    model_dict = torch.load(utils.MODEL_FILE, map_location=device)
+    model_dict = torch.load(utils.SIMPLE_MODEL_FILE, map_location=device)
     model.load_state_dict(model_dict["model_state_dict"])
     model.eval()
     mean = model_dict["mean"]
     std = model_dict["std"]
     return model, mean, std
+
 
 def preprocess_image(image_data, mean, std):
     image = Image.fromarray(image_data).convert("L")
