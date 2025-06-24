@@ -4,7 +4,9 @@ import torch
 import torch.nn as nn
 
 
-PE_MAX_LEN = 64  # max length of pe, i.e. max number of patches we expect from an image
+PE_MAX_LEN = (
+    64  # max length of pe, i.e. max number of patches we expect from an image
+)
 K_DIM = 24
 V_DIM = 32
 
@@ -14,16 +16,16 @@ class PositionalEncoding(nn.Module):
     def __init__(self, model_dim, max_len=PE_MAX_LEN):
         super().__init__()
 
-        pe = torch.zeros(max_len, model_dim)
+        self.pe = torch.zeros(max_len, model_dim)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(
             torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim)
         )
         broadcast = position * div_term
-        pe[:, 0::2] = torch.sin(broadcast)
-        pe[:, 1::2] = torch.cos(broadcast)
-        pe = pe.unsqueeze(0)  # add batch dimension
-        self.register_buffer("pe", pe)
+        self.pe[:, 0::2] = torch.sin(broadcast)
+        self.pe[:, 1::2] = torch.cos(broadcast)
+        self.pe = self.pe.unsqueeze(0)  # add batch dimension
+        self.register_buffer("pe", self.pe)
 
     def forward(self, x):
         return x + self.pe[:, : x.size(1)]
@@ -78,7 +80,7 @@ class BaseClassifier(nn.Module):
         patch_size: int,
         model_dim: int,
         num_encoders: int,
-        use_pe: bool,
+        use_pe: bool = True,
     ):
         super().__init__()
         self.patchify = Patchify(patch_size, model_dim)
@@ -86,7 +88,9 @@ class BaseClassifier(nn.Module):
         self.pe = PositionalEncoding(model_dim)
         # here, 'multi-head dot-product self attention blocks [...] completely replace convolutions' (see 16x16)
         # TODO: use multi-head attention (currently have single head)
-        self.encoders = nn.ModuleList([Encoder(model_dim) for _ in range(num_encoders)])
+        self.encoders = nn.ModuleList(
+            [Encoder(model_dim) for _ in range(num_encoders)]
+        )
 
     def forward(self, x):
         patched = self.patchify(x)
@@ -119,11 +123,11 @@ class Classifier(BaseClassifier):
 
 
 class Decoder(nn.Module):
-    def __init__(self, tfeatures, efeatures):
+    def __init__(self, tfeatures, model_dim):
         super().__init__()
         self.wq = nn.Linear(tfeatures, 24, bias=False)
-        self.wk = nn.Linear(efeatures, 24, bias=False)
-        self.wv = nn.Linear(efeatures, 24, bias=False)
+        self.wk = nn.Linear(model_dim, 24, bias=False)
+        self.wv = nn.Linear(model_dim, 24, bias=False)
         self.wh = nn.Linear(24, tfeatures, bias=False)
 
     def forward(self, encoded, text):
@@ -139,12 +143,22 @@ class Decoder(nn.Module):
 
 
 class Predictor(BaseClassifier):
-    def __init__(self, num_coders=6, patch_size=14, tfeatures=11, efeatures=64):
+    def __init__(
+        self,
+        num_coders: int = 6,
+        patch_size: int = 14,
+        tfeatures: int = 11,
+        model_dim: int = 64,
+        use_pe=True,
+    ):
         super().__init__(
-            num_encoders=num_coders, patch_size=patch_size, model_dim=efeatures
+            patch_size=patch_size,
+            model_dim=model_dim,
+            num_encoders=num_coders,
+            use_pe=use_pe,
         )
         self.decoders = nn.ModuleList(
-            [Decoder(tfeatures, efeatures) for _ in range(num_coders)]
+            [Decoder(tfeatures, model_dim) for _ in range(num_coders)]
         )
         self.linear = nn.Linear(tfeatures, 13)
 

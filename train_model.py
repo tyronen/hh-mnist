@@ -15,13 +15,14 @@ from models import Classifier
 
 hyperparameters = {
     "batch_size": 128,
-    "learning_rate": 0.001,
+    "learning_rate": 0.0001,
     "epochs": 20,
     "patience": 2,
     "patch_size": 7,  # MNIST images are 28x28, so patch size of 7 -> 16 patches
     "model_dim": 64,
-    "num_encoders": 6,
+    "num_encoders": 3,
     "use_pe": True,  # whether to use positional encoding
+    "seed": 42,
 }
 
 parser = argparse.ArgumentParser(description="Train simple model")
@@ -79,11 +80,15 @@ def main():
     device = utils.get_device()
     logging.info(f"Using {device} device")
 
-    run = wandb.init(entity=args.entity, project=args.project, config=hyperparameters)
+    run = wandb.init(
+        entity=args.entity, project=args.project, config=hyperparameters
+    )
 
     logging.info("Downloading MNIST dataset...")
 
-    transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
+    transform = v2.Compose(
+        [v2.ToImage(), v2.ToDtype(torch.float32, scale=True)]
+    )
     raw_data = datasets.MNIST(
         root="data", train=True, download=True, transform=transform
     )
@@ -96,7 +101,10 @@ def main():
 
     train_size = int(0.9 * len(raw_data))
     val_size = len(raw_data) - train_size
-    training_data, val_data = random_split(raw_data, [train_size, val_size])
+    generator = torch.Generator().manual_seed(hyperparameters["seed"])
+    training_data, val_data = random_split(
+        raw_data, [train_size, val_size], generator
+    )
     test_data = datasets.MNIST(
         root="data", train=False, download=True, transform=transform
     )
@@ -137,7 +145,9 @@ def main():
     wandb.define_metric("val_loss", summary="min")
 
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=hyperparameters["learning_rate"])
+    optimizer = optim.Adam(
+        model.parameters(), lr=hyperparameters["learning_rate"]
+    )
 
     best_loss = float("inf")
     epochs_since_best = 0

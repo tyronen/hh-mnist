@@ -1,5 +1,7 @@
 import logging
+
 import torch
+
 
 SIMPLE_MODEL_FILE = "data/simple.pth"
 COMPLEX_MODEL_FILE = "data/complex.pth"
