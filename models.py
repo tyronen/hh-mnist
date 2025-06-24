@@ -4,18 +4,23 @@ import torch
 import torch.nn as nn
 
 
-PE_MAX_LEN = 128  # max length of positional encoding, i.e. max number of patches from an image
+PE_MAX_LEN = (
+    64  # max length of pe, i.e. max number of patches we expect from an image
+)
 K_DIM = 24
 V_DIM = 32
 
 
+# see disection with o3: https://chatgpt.com/share/685a8e42-8f04-8009-b87a-e30b6fbe56b5
 class PositionalEncoding(nn.Module):
     def __init__(self, model_dim, max_len=PE_MAX_LEN):
         super().__init__()
 
         self.pe = torch.zeros(max_len, model_dim)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim))
+        div_term = torch.exp(
+            torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim)
+        )
         self.pe[:, 0::2] = torch.sin(position * div_term)
         self.pe[:, 1::2] = torch.cos(position * div_term)
         self.pe = self.pe.unsqueeze(0)  # add batch dimension
@@ -81,7 +86,9 @@ class BaseClassifier(nn.Module):
         self.pe = PositionalEncoding(model_dim)
         # here, 'multi-head dot-product self attention blocks [...] completely replace convolutions' (see 16x16)
         # TODO: use multi-head attention (currently have single head)
-        self.encoders = nn.ModuleList([Encoder(model_dim) for _ in range(num_encoders)])
+        self.encoders = nn.ModuleList(
+            [Encoder(model_dim) for _ in range(num_encoders)]
+        )
 
     def forward(self, x):
         patched = self.patchify(x)
@@ -103,8 +110,8 @@ class Classifier(BaseClassifier):
         super().__init__(num_encoders, patch_size, model_dim, use_pe)
         self.linear = nn.Linear(model_dim, 10)
 
-    def forward(self, images):
-        base = super().forward(images)
+    def forward(self, x):
+        base = super().forward(x)
         return self.linear(base).mean(dim=1)
 
 
@@ -130,12 +137,16 @@ class Decoder(nn.Module):
 
 class Predictor(BaseClassifier):
     def __init__(self, num_coders=6, patch_size=14, tfeatures=11, efeatures=64):
-        super().__init__(num_encoders=num_coders, patch_size=patch_size, model_dim=efeatures)
-        self.decoders = nn.ModuleList([Decoder(tfeatures, efeatures) for _ in range(num_coders)])
+        super().__init__(
+            num_encoders=num_coders, patch_size=patch_size, model_dim=efeatures
+        )
+        self.decoders = nn.ModuleList(
+            [Decoder(tfeatures, efeatures) for _ in range(num_coders)]
+        )
         self.linear = nn.Linear(tfeatures, 13)
 
-    def forward(self, images, input_seqs):
-        encoded = super().forward(images)
+    def forward(self, x, input_seqs):
+        encoded = super().forward(x)
         x = input_seqs
         for decoder in self.decoders:
             x = decoder(encoded, x)
