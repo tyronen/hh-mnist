@@ -14,10 +14,14 @@ import utils
 from models import Classifier
 
 hyperparameters = {
-    "batch_size": 64,
+    "batch_size": 128,
     "learning_rate": 0.001,
     "epochs": 20,
     "patience": 3,
+    "patch_size": 7,  # MNIST images are 28x28, so patch size of 7 -> 16 patches
+    "model_dim": 64,
+    "num_encoders": 6,
+    "use_pe": True,  # whether to use positional encoding
 }
 
 parser = argparse.ArgumentParser(description="Train simple model")
@@ -107,7 +111,12 @@ def main():
 
     device = utils.get_device()
     logging.info(f"Using {device} device")
-    model = Classifier()
+    model = Classifier(
+        patch_size=hyperparameters["patch_size"],
+        model_dim=hyperparameters["model_dim"],
+        num_encoders=hyperparameters["num_encoders"],
+        use_pe=hyperparameters["use_pe"],
+    )
     model.to(device)
     wandb.watch(model, log="all", log_freq=100)
     wandb.define_metric("val_accuracy", summary="max")
