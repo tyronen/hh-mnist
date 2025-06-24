@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "matplotlib>=3.10.3",
-    "notebook>=7.4.3",
+    "notebook>=6.5.5",
     "streamlit>=1.46.0",
     "streamlit-drawable-canvas>=0.9.3",
     "torch>=2.2.0",

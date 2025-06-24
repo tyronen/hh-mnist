@@ -621,7 +621,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "matplotlib", specifier = ">=3.10.3" },
-    { name = "notebook", specifier = ">=7.4.3" },
+    { name = "notebook", specifier = ">=6.5.5" },
     { name = "streamlit", specifier = ">=1.46.0" },
     { name = "streamlit-drawable-canvas", specifier = ">=0.9.3" },
     { name = "torch", specifier = ">=2.2.0" },
