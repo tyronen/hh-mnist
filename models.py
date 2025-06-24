@@ -4,9 +4,7 @@ import torch
 import torch.nn as nn
 
 
-PE_MAX_LEN = (
-    64  # max length of pe, i.e. max number of patches we expect from an image
-)
+PE_MAX_LEN = 64  # max length of pe, i.e. max number of patches we expect from an image
 K_DIM = 24
 V_DIM = 32
 
@@ -16,15 +14,16 @@ class PositionalEncoding(nn.Module):
     def __init__(self, model_dim, max_len=PE_MAX_LEN):
         super().__init__()
 
-        self.pe = torch.zeros(max_len, model_dim)
+        pe = torch.zeros(max_len, model_dim)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(
             torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim)
         )
         broadcast = position * div_term
-        self.pe[:, 0::2] = torch.sin(broadcast)
-        self.pe[:, 1::2] = torch.cos(broadcast)
-        self.pe = self.pe.unsqueeze(0)  # add batch dimension
+        pe[:, 0::2] = torch.sin(broadcast)
+        pe[:, 1::2] = torch.cos(broadcast)
+        pe = pe.unsqueeze(0)  # add batch dimension
+        self.register_buffer("pe", pe)
 
     def forward(self, x):
         return x + self.pe[:, : x.size(1)]
@@ -76,10 +75,10 @@ class Encoder(nn.Module):
 class BaseClassifier(nn.Module):
     def __init__(
         self,
-        patch_size: int = 7,
-        model_dim: int = 64,
-        num_encoders: int = 6,
-        use_pe: bool = True,
+        patch_size: int,
+        model_dim: int,
+        num_encoders: int,
+        use_pe: bool,
     ):
         super().__init__()
         self.patchify = Patchify(patch_size, model_dim)
@@ -87,9 +86,7 @@ class BaseClassifier(nn.Module):
         self.pe = PositionalEncoding(model_dim)
         # here, 'multi-head dot-product self attention blocks [...] completely replace convolutions' (see 16x16)
         # TODO: use multi-head attention (currently have single head)
-        self.encoders = nn.ModuleList(
-            [Encoder(model_dim) for _ in range(num_encoders)]
-        )
+        self.encoders = nn.ModuleList([Encoder(model_dim) for _ in range(num_encoders)])
 
     def forward(self, x):
         patched = self.patchify(x)
@@ -103,10 +100,10 @@ class BaseClassifier(nn.Module):
 class Classifier(BaseClassifier):
     def __init__(
         self,
-        patch_size: int = 7,
-        model_dim: int = 64,
-        num_encoders: int = 6,
-        use_pe: bool = True,
+        patch_size,
+        model_dim,
+        num_encoders,
+        use_pe: bool,
     ):
         super().__init__(
             patch_size=patch_size,
