@@ -2,12 +2,10 @@ import math
 
 import torch
 import torch.nn as nn
-import math
 
 
 PE_MAX_LEN = 128  # max length of positional encoding, i.e. max number of patches from an image
 K_DIM = 24
-Q_DIM = 24
 V_DIM = 32
 
 
@@ -26,7 +24,6 @@ class PositionalEncoding(nn.Module):
         return x + self.pe[:, : x.size(1)]
 
 
-# TODO: add positional encoding (AFTER patchifying)
 class Patchify(nn.Module):
     # think of each patch as an image token (i.e. as a word, if this was NLP)
     def __init__(self, patch_size=7, model_dim=64):
@@ -40,12 +37,11 @@ class Patchify(nn.Module):
         return self.linear(rotated)
 
 
-# TODO: use multi-head attention (currently have single head)
 class Encoder(nn.Module):
     def __init__(self, model_dim=64, ffn_dim=64):
         super().__init__()
         self.model_dim = model_dim
-        self.wq = nn.Linear(model_dim, Q_DIM, bias=False)
+        self.wq = nn.Linear(model_dim, K_DIM, bias=False)
         self.wk = nn.Linear(model_dim, K_DIM, bias=False)
         self.wv = nn.Linear(model_dim, V_DIM, bias=False)
         self.ffn = nn.Sequential(
@@ -72,24 +68,40 @@ class Encoder(nn.Module):
 
 
 class BaseClassifier(nn.Module):
-    def __init__(self, patch_size=7, model_dim=64, num_encoders=6):
+    def __init__(
+        self,
+        patch_size: int = 7,
+        model_dim: int = 64,
+        num_encoders: int = 6,
+        use_pe: bool = True,
+    ):
         super().__init__()
         self.patchify = Patchify(patch_size, model_dim)
-        # compute fixed positional encodings once
+        self.use_pe = use_pe
+        self.pe = PositionalEncoding(model_dim)
         # here, 'multi-head dot-product self attention blocks [...] completely replace convolutions' (see 16x16)
+        # TODO: use multi-head attention (currently have single head)
         self.encoders = nn.ModuleList([Encoder(model_dim) for _ in range(num_encoders)])
 
     def forward(self, x):
         patched = self.patchify(x)
+        if self.use_pe:
+            patched = self.pe(patched)
         for encoder in self.encoders:
             patched = encoder(patched)
         return patched
 
 
 class Classifier(BaseClassifier):
-    def __init__(self, num_encoders=6, patch_size=14, features=64):
-        super().__init__(num_encoders, patch_size, features)
-        self.linear = nn.Linear(features, 10)
+    def __init__(
+        self,
+        patch_size: int = 7,
+        model_dim: int = 64,
+        num_encoders: int = 6,
+        use_pe: bool = True,
+    ):
+        super().__init__(num_encoders, patch_size, model_dim, use_pe)
+        self.linear = nn.Linear(model_dim, 10)
 
     def forward(self, x):
         base = super().forward(x)
@@ -118,7 +130,7 @@ class Decoder(nn.Module):
 
 class Predictor(BaseClassifier):
     def __init__(self, num_coders=6, patch_size=14, tfeatures=11, efeatures=64):
-        super().__init__(num_encoders=num_coders, patch_size=patch_size, features=efeatures)
+        super().__init__(num_encoders=num_coders, patch_size=patch_size, model_dim=efeatures)
         self.decoders = nn.ModuleList([Decoder(tfeatures, efeatures) for _ in range(num_coders)])
         self.linear = nn.Linear(tfeatures, 13)
 

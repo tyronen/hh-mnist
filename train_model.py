@@ -1,12 +1,12 @@
+import logging
+from tqdm import tqdm
+
 import torch
 from torch import nn
 from torch import optim
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import v2
-import logging
-
-from tqdm import tqdm
 
 import utils
 from models import Classifier
@@ -18,6 +18,7 @@ hyperparameters = {
     "patch_size": 7,  # MNIST images are 28x28, so patch size of 7 -> 16 patches
     "model_dim": 64,
     "num_encoders": 6,
+    "use_pe": True,  # whether to use positional encoding
 }
 
 
@@ -70,6 +71,7 @@ def main():
         patch_size=hyperparameters["patch_size"],
         model_dim=hyperparameters["model_dim"],
         num_encoders=hyperparameters["num_encoders"],
+        use_pe=hyperparameters["use_pe"],
     )
     model.to(device)
 
