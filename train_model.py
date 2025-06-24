@@ -9,6 +9,7 @@ from torchvision.transforms import v2
 import logging
 import wandb
 from tqdm import tqdm
+from contextlib import nullcontext
 
 import utils
 from models import Classifier
@@ -29,6 +30,14 @@ parser = argparse.ArgumentParser(description="Train simple model")
 parser.add_argument("--entity", help="W and B entity", default="mlx-institute")
 parser.add_argument("--project", help="W and B project", default="encoder-only")
 args = parser.parse_args()
+
+
+def amp_components(device, train=False):
+    if device.type == "cuda" and train:
+        return torch.cuda.amp.autocast, torch.cuda.amp.GradScaler()
+    else:
+        # fall-back: no automatic casting, dummy scaler
+        return nullcontext, torch.cuda.amp.GradScaler(enabled=False)
 
 
 def run_batch(
@@ -55,19 +64,21 @@ def run_batch(
 
     iterator = tqdm(dataloader, desc=desc)
     context = torch.enable_grad() if train else torch.no_grad()
-
+    autocast, scaler = amp_components(device, train)
     with context:
         for X, y in iterator:
             X, y = X.to(device), y.to(device)
-            pred = model(X)
-            loss = loss_fn(pred, y)
+            with autocast():
+                pred = model(X)
+                loss = loss_fn(pred, y)
 
             total_loss += loss.item()
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
 
             if train:
-                loss.backward()
-                optimizer.step()
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
                 optimizer.zero_grad()
 
     avg_loss = total_loss / num_batches
@@ -80,15 +91,11 @@ def main():
     device = utils.get_device()
     logging.info(f"Using {device} device")
 
-    run = wandb.init(
-        entity=args.entity, project=args.project, config=hyperparameters
-    )
+    run = wandb.init(entity=args.entity, project=args.project, config=hyperparameters)
 
     logging.info("Downloading MNIST dataset...")
 
-    transform = v2.Compose(
-        [v2.ToImage(), v2.ToDtype(torch.float32, scale=True)]
-    )
+    transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
     raw_data = datasets.MNIST(
         root="data", train=True, download=True, transform=transform
     )
@@ -102,9 +109,7 @@ def main():
     train_size = int(0.9 * len(raw_data))
     val_size = len(raw_data) - train_size
     generator = torch.Generator().manual_seed(hyperparameters["seed"])
-    training_data, val_data = random_split(
-        raw_data, [train_size, val_size], generator
-    )
+    training_data, val_data = random_split(raw_data, [train_size, val_size], generator)
     test_data = datasets.MNIST(
         root="data", train=False, download=True, transform=transform
     )
@@ -145,9 +150,7 @@ def main():
     wandb.define_metric("val_loss", summary="min")
 
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(
-        model.parameters(), lr=hyperparameters["learning_rate"]
-    )
+    optimizer = optim.Adam(model.parameters(), lr=hyperparameters["learning_rate"])
 
     best_loss = float("inf")
     epochs_since_best = 0
