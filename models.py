@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import math
 
 
 class Patchify(nn.Module):
@@ -28,6 +29,7 @@ class Encoder(nn.Module):
         v = self.wv(x)
         kt = k.permute(0, 2, 1)
         a = torch.matmul(q, kt)
+        a = a / math.sqrt(24)
         a = torch.softmax(a, dim=1)
         h1 = torch.matmul(a, v)
         return self.wh(h1)
@@ -70,6 +72,7 @@ class Decoder(nn.Module):
         v = self.wv(encoded)
         kt = k.permute(0, 2, 1)
         a = torch.matmul(q, kt)
+        a = a / math.sqrt(24)
         a = torch.softmax(a, dim=1)
         h1 = torch.matmul(a, v)
         return self.wh(h1)
