@@ -4,7 +4,9 @@ import torch
 import torch.nn as nn
 
 
-PE_MAX_LEN = 64  # max length of pe, i.e. max number of patches we expect from an image
+PE_MAX_LEN = (
+    64  # max length of pe, i.e. max number of patches we expect from an image
+)
 K_DIM = 24
 V_DIM = 32
 
@@ -70,7 +72,9 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         self.d_k = model_dim // num_heads
         self.model_dim = model_dim
-        self.heads = nn.ModuleList([AttentionHead(self.d_k) for _ in range(num_heads)])
+        self.heads = nn.ModuleList(
+            [AttentionHead(self.d_k) for _ in range(num_heads)]
+        )
         self.endmulti = nn.Linear(model_dim, model_dim, bias=False)
 
     def forward(self, x):
@@ -135,7 +139,9 @@ class BaseClassifier(nn.Module):
         # here, 'multi-head dot-product self attention blocks [...] completely replace convolutions' (see 16x16)
         self.encoders = nn.ModuleList(
             [
-                Encoder(model_dim=model_dim, num_heads=num_heads, ffn_dim=ffn_dim)
+                Encoder(
+                    model_dim=model_dim, num_heads=num_heads, ffn_dim=ffn_dim
+                )
                 for _ in range(num_encoders)
             ]
         )

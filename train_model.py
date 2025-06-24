@@ -22,8 +22,8 @@ hyperparameters = {
     "learning_rate": 0.001,
     "epochs": 20,
     "patience": 2,
-    "patch_size": 7,  # base MNIST images are 28x28, so patch size of 7 -> 16 patches
-    "model_dim": 64,
+    "patch_size": 14,  # base MNIST images are 28x28, so patch size of 7 -> 16 patches
+    "model_dim": 384,
     "ffn_dim": 64,
     "num_encoders": 3,
     "num_heads": 8,
@@ -51,7 +51,9 @@ sweep_config = {
 parser = argparse.ArgumentParser(description="Train simple model")
 parser.add_argument("--entity", help="W and B entity", default="mlx-institute")
 parser.add_argument("--project", help="W and B project", default="encoder-only")
-parser.add_argument("--sweep", help="Run hyperparameter sweep", action="store_true")
+parser.add_argument(
+    "--sweep", help="Run hyperparameter sweep", action="store_true"
+)
 parser.add_argument(
     "--no-save",
     help="Don't save model state (or checkpoints)",
@@ -65,7 +67,9 @@ def amp_components(device, train=False):
         return torch.cuda.amp.autocast, torch.amp.GradScaler("cuda")
     else:
         # fall-back: no automatic casting, dummy scaler
-        return nullcontext, torch.amp.GradScaler(device=device.type, enabled=False)
+        return nullcontext, torch.amp.GradScaler(
+            device=device.type, enabled=False
+        )
 
 
 def run_batch(
@@ -105,7 +109,9 @@ def run_batch(
 
             if train:
                 if optimizer is None:
-                    raise ValueError("Optimizer must be provided when train=True")
+                    raise ValueError(
+                        "Optimizer must be provided when train=True"
+                    )
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -120,7 +126,9 @@ def run_batch(
 
 def setup_data():
     """Setup and return datasets and dataloaders."""
-    transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
+    transform = v2.Compose(
+        [v2.ToImage(), v2.ToDtype(torch.float32, scale=True)]
+    )
     raw_data = datasets.MNIST(
         root="data", train=True, download=True, transform=transform
     )
@@ -132,7 +140,9 @@ def setup_data():
     train_size = int(0.9 * len(raw_data))
     val_size = len(raw_data) - train_size
     generator = torch.Generator().manual_seed(hyperparameters["seed"])
-    training_data, val_data = random_split(raw_data, [train_size, val_size], generator)
+    training_data, val_data = random_split(
+        raw_data, [train_size, val_size], generator
+    )
     test_data = datasets.MNIST(
         root="data", train=False, download=True, transform=transform
     )
@@ -307,7 +317,9 @@ def run_sweep():
     print("Starting hyperparameter sweep...")
     print(f"Sweep configuration: {sweep_config}")
 
-    sweep_id = wandb.sweep(sweep_config, project=args.project, entity=args.entity)
+    sweep_id = wandb.sweep(
+        sweep_config, project=args.project, entity=args.entity
+    )
     print(f"Sweep ID: {sweep_id}")
     print("Run the following command to start agents:")
     print(f"wandb agent {args.entity}/{args.project}/{sweep_id}")
