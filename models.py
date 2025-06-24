@@ -31,7 +31,7 @@ class PositionalEncoding(nn.Module):
 
 class Patchify(nn.Module):
     # think of each patch as an image token (i.e. as a word, if this was NLP)
-    def __init__(self, patch_size=7, model_dim=64):
+    def __init__(self, patch_size, model_dim):
         super().__init__()
         self.unfold = nn.Unfold(kernel_size=patch_size, stride=patch_size)
         self.linear = nn.Linear(patch_size**2, model_dim, bias=False)
@@ -65,6 +65,24 @@ class AttentionHead(nn.Module):
         return self.endhead(hidden)
 
 
+class MultiHeadAttention(nn.Module):
+    def __init__(self, model_dim, num_heads):
+        super().__init__()
+        self.d_k = model_dim // num_heads
+        self.model_dim = model_dim
+        self.heads = nn.ModuleList([AttentionHead(self.d_k) for _ in range(num_heads)])
+        self.endmulti = nn.Linear(model_dim, model_dim, bias=False)
+
+    def forward(self, x):
+        head_outputs = []
+        for head in self.heads:
+            head_outputs.append(head(x))
+        concatted = head_outputs[0]
+        for headed in head_outputs[1:]:
+            concatted = concatted + headed
+        return self.endmulti(concatted)
+
+
 class FeedForward(nn.Module):
     def __init__(self, model_dim, ffn_dim):
         super().__init__()
@@ -79,16 +97,21 @@ class FeedForward(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, model_dim=64, ffn_dim=64):
+    def __init__(
+        self,
+        model_dim,
+        ffn_dim,
+        num_heads,
+    ):
         super().__init__()
-        self.attn_head = AttentionHead(model_dim)
+        self.mha = MultiHeadAttention(model_dim=model_dim, num_heads=num_heads)
         self.norm1 = nn.LayerNorm(model_dim)
         self.ffn = FeedForward(model_dim, ffn_dim)
         self.norm2 = nn.LayerNorm(model_dim)
 
     def forward(self, x):
-        head = self.attn_head(x)
-        addnormed = self.norm1(x + head)
+        mhead = self.mha(x)
+        addnormed = self.norm1(x + mhead)
 
         # pass attention output through feed-forward sub-layer (basic MLP)
         ffned = self.ffn(addnormed)
@@ -100,16 +123,22 @@ class BaseClassifier(nn.Module):
         self,
         patch_size: int,
         model_dim: int,
+        ffn_dim: int,
+        num_heads: int,
         num_encoders: int,
-        use_pe: bool = True,
+        use_pe: bool,
     ):
         super().__init__()
         self.patchify = Patchify(patch_size, model_dim)
         self.use_pe = use_pe
         self.pe = PositionalEncoding(model_dim)
         # here, 'multi-head dot-product self attention blocks [...] completely replace convolutions' (see 16x16)
-        # TODO: use multi-head attention (currently have single head)
-        self.encoders = nn.ModuleList([Encoder(model_dim) for _ in range(num_encoders)])
+        self.encoders = nn.ModuleList(
+            [
+                Encoder(model_dim=model_dim, num_heads=num_heads, ffn_dim=ffn_dim)
+                for _ in range(num_encoders)
+            ]
+        )
 
     def forward(self, x):
         patched = self.patchify(x)
@@ -123,14 +152,18 @@ class BaseClassifier(nn.Module):
 class Classifier(BaseClassifier):
     def __init__(
         self,
-        patch_size,
-        model_dim,
-        num_encoders,
+        patch_size: int,
+        model_dim: int,
+        ffn_dim: int,
+        num_heads: int,
+        num_encoders: int,
         use_pe: bool,
     ):
         super().__init__(
             patch_size=patch_size,
             model_dim=model_dim,
+            ffn_dim=ffn_dim,
+            num_heads=num_heads,
             num_encoders=num_encoders,
             use_pe=use_pe,
         )

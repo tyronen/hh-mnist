@@ -24,7 +24,9 @@ hyperparameters = {
     "patience": 2,
     "patch_size": 7,  # base MNIST images are 28x28, so patch size of 7 -> 16 patches
     "model_dim": 64,
+    "ffn_dim": 64,
     "num_encoders": 3,
+    "num_heads": 8,
     "use_pe": True,  # whether to use positional encoding
     "seed": 42,
 }
@@ -39,7 +41,9 @@ sweep_config = {
         "patience": {"values": [2]},
         "patch_size": {"values": [7, 14]},
         "model_dim": {"values": [64, 128, 384]},
+        "ffn_dim": {"values": [64]},
         "num_encoders": {"values": [2, 3, 4, 5]},
+        "num_heads": {"values": [1, 2, 4, 8]},
         "use_pe": {"values": [True, False]},
     },
 }
@@ -61,7 +65,7 @@ def amp_components(device, train=False):
         return torch.cuda.amp.autocast, torch.amp.GradScaler("cuda")
     else:
         # fall-back: no automatic casting, dummy scaler
-        return nullcontext, torch.cuda.amp.GradScaler(enabled=False)
+        return nullcontext, torch.amp.GradScaler(device=device.type, enabled=False)
 
 
 def run_batch(
@@ -173,7 +177,9 @@ def run_single_training(config=None):
     model = Classifier(
         patch_size=config["patch_size"],
         model_dim=config["model_dim"],
+        ffn_dim=config["ffn_dim"],
         num_encoders=config["num_encoders"],
+        num_heads=config["num_heads"],
         use_pe=config["use_pe"],
     )
     model.to(device)
