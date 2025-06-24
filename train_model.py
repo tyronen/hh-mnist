@@ -1,12 +1,14 @@
-import logging
-from tqdm import tqdm
-
+import argparse
 import torch
 from torch import nn
 from torch import optim
 from torch.utils.data import DataLoader
+from torch.utils.data import random_split
 from torchvision import datasets
 from torchvision.transforms import v2
+import logging
+import wandb
+from tqdm import tqdm
 
 import utils
 from models import Classifier
@@ -14,56 +16,98 @@ from models import Classifier
 hyperparameters = {
     "batch_size": 128,
     "learning_rate": 0.001,
-    "epochs": 5,
+    "epochs": 20,
+    "patience": 3,
     "patch_size": 7,  # MNIST images are 28x28, so patch size of 7 -> 16 patches
     "model_dim": 64,
     "num_encoders": 6,
     "use_pe": True,  # whether to use positional encoding
 }
 
-
-def train(dataloader, model, loss_fn, optimizer, device, epoch):
-    model.train()
-    for batch, (X, y) in enumerate(tqdm(dataloader, f"Training epoch {epoch + 1}")):
-        X, y = X.to(device), y.to(device)
-        pred = model(X)
-        loss = loss_fn(pred, y)
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
+parser = argparse.ArgumentParser(description="Train simple model")
+parser.add_argument("--entity", help="W and B entity", default="mlx-institute")
+parser.add_argument("--project", help="W and B project", default="encoder-only")
+args = parser.parse_args()
 
 
-def test(dataloader, model, loss_fn, device):
+def run_batch(
+    dataloader,
+    model,
+    loss_fn,
+    device,
+    train: bool = False,
+    optimizer=None,
+    desc: str = "",
+):
+    """
+    Runs one pass over `dataloader`.
+
+    If `train` is True, the model is set to training mode and the optimizer is
+    stepped. Otherwise the model is evaluated with torch.no_grad().
+    Returns (accuracy %, average_loss) for the epoch.
+    """
+    model.train() if train else model.eval()
+
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
-    model.eval()
-    test_loss, correct = 0, 0
-    with torch.no_grad():
-        for X, y in tqdm(dataloader, "Testing"):
+    total_loss, correct = 0.0, 0
+
+    iterator = tqdm(dataloader, desc=desc)
+    context = torch.enable_grad() if train else torch.no_grad()
+
+    with context:
+        for X, y in iterator:
             X, y = X.to(device), y.to(device)
             pred = model(X)
-            test_loss += loss_fn(pred, y).item()
+            loss = loss_fn(pred, y)
+
+            total_loss += loss.item()
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
-    test_loss /= num_batches
-    correct /= size
-    logging.info(f"Test Error: \n Accuracy: {(100 * correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
+
+            if train:
+                loss.backward()
+                optimizer.step()
+                optimizer.zero_grad()
+
+    avg_loss = total_loss / num_batches
+    accuracy = 100 * correct / size
+    return accuracy, avg_loss
 
 
 def main():
     utils.setup_logging()
+
+    run = wandb.init(entity=args.entity, project=args.project, config=hyperparameters)
+
     logging.info("Downloading MNIST dataset...")
 
     transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
-    training_data = datasets.MNIST(root="data", train=True, download=True, transform=transform)
-    test_data = datasets.MNIST(root="data", train=False, download=True, transform=transform)
-
-    stats_dataloader = DataLoader(training_data, batch_size=len(training_data.data), shuffle=False)
+    raw_data = datasets.MNIST(
+        root="data", train=True, download=True, transform=transform
+    )
+    stats_dataloader = DataLoader(
+        raw_data, batch_size=len(raw_data.data), shuffle=False
+    )
     images, _ = next(iter(stats_dataloader))
     mean = images.mean()
     std = images.std()
 
-    train_dataloader = DataLoader(training_data, batch_size=hyperparameters["batch_size"], shuffle=True)
-    test_dataloader = DataLoader(test_data, batch_size=hyperparameters["batch_size"], shuffle=False)
+    train_size = int(0.9 * len(raw_data))
+    val_size = len(raw_data) - train_size
+    training_data, val_data = random_split(raw_data, [train_size, val_size])
+    test_data = datasets.MNIST(
+        root="data", train=False, download=True, transform=transform
+    )
+
+    train_dataloader = DataLoader(
+        training_data, batch_size=hyperparameters["batch_size"], shuffle=True
+    )
+    val_dataloader = DataLoader(
+        val_data, batch_size=hyperparameters["batch_size"], shuffle=False
+    )
+    test_dataloader = DataLoader(
+        test_data, batch_size=hyperparameters["batch_size"], shuffle=False
+    )
 
     device = utils.get_device()
     logging.info(f"Using {device} device")
@@ -74,21 +118,63 @@ def main():
         use_pe=hyperparameters["use_pe"],
     )
     model.to(device)
+    wandb.watch(model, log="all", log_freq=100)
+    wandb.define_metric("val_accuracy", summary="max")
+    wandb.define_metric("val_loss", summary="min")
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=hyperparameters["learning_rate"])
 
+    best_loss = float("inf")
+    epochs_since_best = 0
     for epoch in range(hyperparameters["epochs"]):
-        train(train_dataloader, model, loss_fn, optimizer, device, epoch)
+        train_correct, train_loss = run_batch(
+            train_dataloader,
+            model,
+            loss_fn,
+            device,
+            train=True,
+            optimizer=optimizer,
+            desc=f"Training epoch {epoch + 1}",
+        )
+        val_correct, val_loss = run_batch(
+            val_dataloader,
+            model,
+            loss_fn,
+            device,
+            train=False,
+            desc=f"Validating epoch {epoch + 1}",
+        )
+        run.log(
+            {
+                "train_accuracy": train_correct,
+                "train_loss": train_loss,
+                "val_accuracy": val_correct,
+                "val_loss": val_loss,
+            },
+        )
+        if val_loss < best_loss:
+            best_loss = val_loss
+            epochs_since_best = 0
+            model_dict = {
+                "model_state_dict": model.state_dict(),
+                "mean": mean,
+                "std": std,
+            }
+            torch.save(model_dict, utils.SIMPLE_MODEL_FILE)
+        else:
+            epochs_since_best += 1
+        if epochs_since_best >= hyperparameters["patience"]:
+            break
 
-    test(test_dataloader, model, loss_fn, device)
-    model_dict = {
-        "model_state_dict": model.state_dict(),
-        "mean": mean,
-        "std": std,
-    }
-    torch.save(model_dict, utils.SIMPLE_MODEL_FILE)
+    checkpoint = torch.load(utils.SIMPLE_MODEL_FILE)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    test_correct, test_loss = run_batch(
+        test_dataloader, model, loss_fn, device, train=False, desc="Testing"
+    )
+    run.log({"test_accuracy": test_correct, "test_loss": test_loss})
     logging.info(f"Saved PyTorch Model State to {utils.SIMPLE_MODEL_FILE}")
+    run.finish(0)
 
 
 if __name__ == "__main__":

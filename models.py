@@ -103,8 +103,8 @@ class Classifier(BaseClassifier):
         super().__init__(num_encoders, patch_size, model_dim, use_pe)
         self.linear = nn.Linear(model_dim, 10)
 
-    def forward(self, x):
-        base = super().forward(x)
+    def forward(self, images):
+        base = super().forward(images)
         return self.linear(base).mean(dim=1)
 
 
