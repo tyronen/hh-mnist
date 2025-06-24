@@ -1,6 +1,6 @@
 import argparse
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 import torch
 from torch import nn
@@ -58,7 +58,7 @@ args = parser.parse_args()
 
 def amp_components(device, train=False):
     if device.type == "cuda" and train:
-        return torch.cuda.amp.autocast, torch.cuda.amp.GradScaler()
+        return torch.cuda.amp.autocast, torch.amp.GradScaler("cuda")
     else:
         # fall-back: no automatic casting, dummy scaler
         return nullcontext, torch.cuda.amp.GradScaler(enabled=False)
@@ -124,8 +124,6 @@ def setup_data():
         raw_data, batch_size=len(raw_data.data), shuffle=False
     )
     images, _ = next(iter(stats_dataloader))
-    mean = images.mean()
-    std = images.std()
 
     train_size = int(0.9 * len(raw_data))
     val_size = len(raw_data) - train_size
@@ -135,7 +133,7 @@ def setup_data():
         root="data", train=False, download=True, transform=transform
     )
 
-    return training_data, val_data, test_data, mean, std
+    return training_data, val_data, test_data
 
 
 def run_single_training(config=None):
@@ -146,7 +144,7 @@ def run_single_training(config=None):
     device = utils.get_device()
 
     # Setup data
-    training_data, val_data, test_data, mean, std = setup_data()
+    training_data, val_data, test_data = setup_data()
 
     pin_memory = device.type == "cuda"
     num_workers = 8 if device.type == "cuda" else 0
@@ -195,8 +193,6 @@ def run_single_training(config=None):
         device=device,
         loss_fn=loss_fn,
         optimizer=optimizer,
-        mean=mean,
-        std=std,
         config=config,
     )
 
@@ -240,6 +236,10 @@ def main():
         run_single_training(hyperparameters)
 
         logging.info(f"Saved PyTorch Model State to {utils.SIMPLE_MODEL_FILE}")
+        if not args.no_save:
+            artifact = wandb.Artifact(name="simple_model", type="model")
+            artifact.add_file(utils.SIMPLE_MODEL_FILE)
+            run.log_artifact(artifact)
         run.finish(0)
 
 
@@ -250,8 +250,6 @@ def run_training(
     device: torch.device,
     loss_fn: nn.Module,
     optimizer: Optimizer,
-    mean: Any,
-    std: Any,
     config: dict,
 ) -> nn.Module:
     best_loss = float("inf")
@@ -288,8 +286,6 @@ def run_training(
             if not args.no_save:
                 model_dict = {
                     "model_state_dict": model.state_dict(),
-                    "mean": mean,
-                    "std": std,
                 }
                 torch.save(model_dict, utils.SIMPLE_MODEL_FILE)
         else:
@@ -331,7 +327,7 @@ def sweep_train():
     # Run training with sweep parameters
     model = run_single_training(config)
 
-    run.finish()
+    run.finish(0)
     return model
 
 

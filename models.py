@@ -42,21 +42,14 @@ class Patchify(nn.Module):
         return self.linear(rotated)
 
 
-class Encoder(nn.Module):
-    def __init__(self, model_dim=64, ffn_dim=64):
+class AttentionHead(nn.Module):
+    def __init__(self, model_dim):
         super().__init__()
         self.model_dim = model_dim
         self.wq = nn.Linear(model_dim, K_DIM, bias=False)
         self.wk = nn.Linear(model_dim, K_DIM, bias=False)
         self.wv = nn.Linear(model_dim, V_DIM, bias=False)
-        self.endhead = nn.Linear(V_DIM, model_dim)
-        self.norm1 = nn.LayerNorm(model_dim)
-        self.ffn = nn.Sequential(
-            nn.Linear(model_dim, ffn_dim),
-            nn.ReLU(),
-            nn.Linear(ffn_dim, model_dim),
-        )
-        self.norm2 = nn.LayerNorm(model_dim)
+        self.endhead = nn.Linear(V_DIM, model_dim, bias=False)
 
     def forward(self, x):
         q = self.wq(x)
@@ -69,8 +62,32 @@ class Encoder(nn.Module):
         attn_scaled = attn_dot_product / math.sqrt(K_DIM)
         attn_probs = torch.softmax(attn_scaled, dim=1)
         hidden = torch.matmul(attn_probs, v)
-        head = self.endhead(hidden)
+        return self.endhead(hidden)
 
+
+class FeedForward(nn.Module):
+    def __init__(self, model_dim, ffn_dim):
+        super().__init__()
+        self.sequence = nn.Sequential(
+            nn.Linear(model_dim, ffn_dim, bias=False),
+            nn.ReLU(),
+            nn.Linear(ffn_dim, model_dim, bias=False),
+        )
+
+    def forward(self, x):
+        return self.sequence(x)
+
+
+class Encoder(nn.Module):
+    def __init__(self, model_dim=64, ffn_dim=64):
+        super().__init__()
+        self.attn_head = AttentionHead(model_dim)
+        self.norm1 = nn.LayerNorm(model_dim)
+        self.ffn = FeedForward(model_dim, ffn_dim)
+        self.norm2 = nn.LayerNorm(model_dim)
+
+    def forward(self, x):
+        head = self.attn_head(x)
         addnormed = self.norm1(x + head)
 
         # pass attention output through feed-forward sub-layer (basic MLP)
