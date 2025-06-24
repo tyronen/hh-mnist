@@ -4,9 +4,7 @@ import torch
 import torch.nn as nn
 
 
-PE_MAX_LEN = (
-    64  # max length of pe, i.e. max number of patches we expect from an image
-)
+PE_MAX_LEN = 64  # max length of pe, i.e. max number of patches we expect from an image
 K_DIM = 24
 V_DIM = 32
 
@@ -57,7 +55,7 @@ class Encoder(nn.Module):
             nn.Linear(ffn_dim, model_dim),
         )
 
-    # TODO: add residual connection and layer normalization logic
+    # TODO: add layer normalization logic
     def forward(self, x):
         q = self.wq(x)
         k = self.wk(x)
@@ -71,7 +69,7 @@ class Encoder(nn.Module):
         hidden = torch.matmul(attn_probs, v)
 
         # pass attention output through feed-forward sub-layer (basic MLP)
-        return self.ffn(hidden)
+        return x + self.ffn(hidden)
 
 
 class BaseClassifier(nn.Module):
@@ -88,9 +86,7 @@ class BaseClassifier(nn.Module):
         self.pe = PositionalEncoding(model_dim)
         # here, 'multi-head dot-product self attention blocks [...] completely replace convolutions' (see 16x16)
         # TODO: use multi-head attention (currently have single head)
-        self.encoders = nn.ModuleList(
-            [Encoder(model_dim) for _ in range(num_encoders)]
-        )
+        self.encoders = nn.ModuleList([Encoder(model_dim) for _ in range(num_encoders)])
 
     def forward(self, x):
         patched = self.patchify(x)
