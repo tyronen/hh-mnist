@@ -1,0 +1,25 @@
+dataset:
+  patch_size: 14
+  num_patches: 4
+  valid_fraction: 0.2
+  batch_size: 64
+  num_classes: 10
+  cache_dir: "/Users/anton/experiment_data/datasets"
+
+model:
+  embed_dim: 64
+  num_heads: 4
+  mlp_dim: 128
+  num_transformer_layers: 6
+
+  save_path_base: "/Users/anton/mlx/src/week3/models/model"
+
+train:
+  epochs: 5
+  lr: 0.0003
+  seed: 42
+
+log:
+  wandb: true
+  project: "vt_num_classification"
+  run_name: "test"

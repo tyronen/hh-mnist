@@ -1,0 +1,32 @@
+project: vt_num_classification
+name: sweep
+
+method: bayes  # or grid for exhaustive
+
+metric:
+  name: val/accuracy
+  goal: maximize
+
+parameters:
+  train.lr:
+    values: [0.0001, 0.0003, 0.001]
+  train.epochs:
+    values: [5, 10]
+  dataset.batch_size:
+    values: [32, 64, 128]
+  model.embed_dim:
+    values: [32, 64, 128]
+  model.num_heads:
+    values: [2, 4, 8]
+  model.mlp_dim:
+    values: [64, 128, 256]
+  model.num_transformer_layers:
+    values: [4, 6, 8]
+
+program: src/main.py
+command:
+  - ${env}
+  - python
+  - ${program}
+  - --config
+  - config/base.yaml

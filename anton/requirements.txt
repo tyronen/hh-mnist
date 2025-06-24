@@ -1,0 +1,11 @@
+matplotlib
+numpy
+omegaconf
+scikit_learn
+seaborn
+torch
+torchvision
+tqdm
+wandb
+pillow
+ipykernel
