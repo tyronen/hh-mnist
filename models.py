@@ -53,7 +53,7 @@ class Classifier(BaseClassifier):
         super().__init__(num_encoders, patch_size, features)
         self.linear = nn.Linear(features, 10)
 
-    def forward(self, images, input_seqs):
+    def forward(self, images):
         base = super().forward(images)
         return self.linear(base).mean(dim=1)
 
