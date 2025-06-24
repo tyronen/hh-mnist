@@ -33,13 +33,13 @@ sweep_config = {
     "method": "bayes",  # Can be 'grid', 'random', or 'bayes'
     "metric": {"name": "test_accuracy", "goal": "maximize"},
     "parameters": {
-        "batch_size": {"values": [512]},
+        "batch_size": {"values": [512, 1024]},
         "learning_rate": {"values": [1e-3, 1e-4]},
         "epochs": {"values": [12, 16, 20]},
         "patience": {"values": [2]},
         "patch_size": {"values": [7, 14]},
-        "model_dim": {"values": [64, 128, 256, 512]},
-        "num_encoders": {"values": [3, 4, 5, 6]},
+        "model_dim": {"values": [64, 128, 384]},
+        "num_encoders": {"values": [2, 3, 4, 5]},
         "use_pe": {"values": [True, False]},
     },
 }
