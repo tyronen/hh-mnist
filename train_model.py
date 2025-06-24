@@ -15,8 +15,8 @@ import utils
 from models import Classifier
 
 hyperparameters = {
-    "batch_size": 128,
-    "learning_rate": 0.0001,
+    "batch_size": 1024,
+    "learning_rate": 0.001,
     "epochs": 20,
     "patience": 2,
     "patch_size": 7,  # MNIST images are 28x28, so patch size of 7 -> 16 patches
@@ -90,6 +90,10 @@ def main():
     utils.setup_logging()
     device = utils.get_device()
     logging.info(f"Using {device} device")
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cuda.matmul.allow_tf32 = True
+    if device.type == "cuda":
+        torch.set_float32_matmul_precision("medium")
 
     run = wandb.init(entity=args.entity, project=args.project, config=hyperparameters)
 
@@ -115,7 +119,7 @@ def main():
     )
 
     pin_memory = device.type == "cuda"
-    num_workers = 4 if device.type == "cuda" else 0
+    num_workers = 8 if device.type == "cuda" else 0
     train_dataloader = DataLoader(
         training_data,
         batch_size=hyperparameters["batch_size"],
