@@ -49,13 +49,15 @@ class Encoder(nn.Module):
         self.wq = nn.Linear(model_dim, K_DIM, bias=False)
         self.wk = nn.Linear(model_dim, K_DIM, bias=False)
         self.wv = nn.Linear(model_dim, V_DIM, bias=False)
+        self.endhead = nn.Linear(V_DIM, model_dim)
+        self.norm1 = nn.LayerNorm(model_dim)
         self.ffn = nn.Sequential(
-            nn.Linear(V_DIM, ffn_dim),
+            nn.Linear(model_dim, ffn_dim),
             nn.ReLU(),
             nn.Linear(ffn_dim, model_dim),
         )
+        self.norm2 = nn.LayerNorm(model_dim)
 
-    # TODO: add layer normalization logic
     def forward(self, x):
         q = self.wq(x)
         k = self.wk(x)
@@ -67,9 +69,13 @@ class Encoder(nn.Module):
         attn_scaled = attn_dot_product / math.sqrt(K_DIM)
         attn_probs = torch.softmax(attn_scaled, dim=1)
         hidden = torch.matmul(attn_probs, v)
+        head = self.endhead(hidden)
+
+        addnormed = self.norm1(x + head)
 
         # pass attention output through feed-forward sub-layer (basic MLP)
-        return x + self.ffn(hidden)
+        ffned = self.ffn(addnormed)
+        return self.norm2(addnormed + ffned)
 
 
 class BaseClassifier(nn.Module):
