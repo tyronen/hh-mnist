@@ -17,7 +17,7 @@ hyperparameters = {
     "batch_size": 128,
     "learning_rate": 0.001,
     "epochs": 20,
-    "patience": 3,
+    "patience": 2,
     "patch_size": 7,  # MNIST images are 28x28, so patch size of 7 -> 16 patches
     "model_dim": 64,
     "num_encoders": 6,
@@ -76,6 +76,8 @@ def run_batch(
 
 def main():
     utils.setup_logging()
+    device = utils.get_device()
+    logging.info(f"Using {device} device")
 
     run = wandb.init(entity=args.entity, project=args.project, config=hyperparameters)
 
@@ -99,18 +101,30 @@ def main():
         root="data", train=False, download=True, transform=transform
     )
 
+    pin_memory = device.type == "cuda"
+    num_workers = 4 if device.type == "cuda" else 0
     train_dataloader = DataLoader(
-        training_data, batch_size=hyperparameters["batch_size"], shuffle=True
+        training_data,
+        batch_size=hyperparameters["batch_size"],
+        shuffle=True,
+        pin_memory=pin_memory,
+        num_workers=num_workers,
     )
     val_dataloader = DataLoader(
-        val_data, batch_size=hyperparameters["batch_size"], shuffle=False
+        val_data,
+        batch_size=hyperparameters["batch_size"],
+        shuffle=False,
+        pin_memory=pin_memory,
+        num_workers=num_workers,
     )
     test_dataloader = DataLoader(
-        test_data, batch_size=hyperparameters["batch_size"], shuffle=False
+        test_data,
+        batch_size=hyperparameters["batch_size"],
+        shuffle=False,
+        pin_memory=pin_memory,
+        num_workers=num_workers,
     )
 
-    device = utils.get_device()
-    logging.info(f"Using {device} device")
     model = Classifier(
         patch_size=hyperparameters["patch_size"],
         model_dim=hyperparameters["model_dim"],
