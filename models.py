@@ -16,16 +16,16 @@ class PositionalEncoding(nn.Module):
     def __init__(self, model_dim, max_len=PE_MAX_LEN):
         super().__init__()
 
-        self.pe = torch.zeros(max_len, model_dim)
+        pe = torch.zeros(max_len, model_dim)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(
             torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim)
         )
         broadcast = position * div_term
-        self.pe[:, 0::2] = torch.sin(broadcast)
-        self.pe[:, 1::2] = torch.cos(broadcast)
-        self.pe = self.pe.unsqueeze(0)  # add batch dimension
-        self.register_buffer("pe", self.pe)
+        pe[:, 0::2] = torch.sin(broadcast)
+        pe[:, 1::2] = torch.cos(broadcast)
+        pe = pe.unsqueeze(0)  # add batch dimension
+        self.register_buffer("pe", pe)
 
     def forward(self, x):
         return x + self.pe[:, : x.size(1)]
