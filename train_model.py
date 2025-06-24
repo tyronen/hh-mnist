@@ -3,8 +3,7 @@ import logging
 from typing import Optional
 
 import torch
-from torch import nn
-from torch import optim
+from torch import autocast, GradScaler, optim, nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split
@@ -64,12 +63,10 @@ args = parser.parse_args()
 
 def amp_components(device, train=False):
     if device.type == "cuda" and train:
-        return torch.cuda.amp.autocast, torch.amp.GradScaler("cuda")
+        return autocast(device.type), GradScaler("cuda")
     else:
         # fall-back: no automatic casting, dummy scaler
-        return nullcontext, torch.amp.GradScaler(
-            device=device.type, enabled=False
-        )
+        return nullcontext(), GradScaler(device=device.type, enabled=False)
 
 
 def run_batch(
@@ -100,7 +97,7 @@ def run_batch(
     with context:
         for X, y in iterator:
             X, y = X.to(device), y.to(device)
-            with autocast():
+            with autocast:
                 pred = model(X)
                 loss = loss_fn(pred, y)
 

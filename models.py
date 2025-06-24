@@ -4,16 +4,15 @@ import torch
 import torch.nn as nn
 
 
-PE_MAX_LEN = (
-    64  # max length of pe, i.e. max number of patches we expect from an image
-)
+PE_MAX_LEN = 64  # max length of pe, i.e. max number of patches we expect from a single image
+# TODO: expose these dims as hyperparams also (small values here could be a limiting factor)
 K_DIM = 24
 V_DIM = 32
 
 
 # see disection with o3: https://chatgpt.com/share/685a8e42-8f04-8009-b87a-e30b6fbe56b5
 class PositionalEncoding(nn.Module):
-    def __init__(self, model_dim, max_len=PE_MAX_LEN):
+    def __init__(self, model_dim: int, max_len: int = PE_MAX_LEN):
         super().__init__()
 
         pe = torch.zeros(max_len, model_dim)
@@ -33,7 +32,7 @@ class PositionalEncoding(nn.Module):
 
 class Patchify(nn.Module):
     # think of each patch as an image token (i.e. as a word, if this was NLP)
-    def __init__(self, patch_size, model_dim):
+    def __init__(self, patch_size: int, model_dim: int):
         super().__init__()
         self.unfold = nn.Unfold(kernel_size=patch_size, stride=patch_size)
         self.linear = nn.Linear(patch_size**2, model_dim, bias=False)
@@ -45,7 +44,7 @@ class Patchify(nn.Module):
 
 
 class AttentionHead(nn.Module):
-    def __init__(self, model_dim):
+    def __init__(self, model_dim: int):
         super().__init__()
         self.model_dim = model_dim
         self.wq = nn.Linear(model_dim, K_DIM, bias=False)
@@ -68,7 +67,7 @@ class AttentionHead(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, model_dim, num_heads):
+    def __init__(self, model_dim: int, num_heads: int):
         super().__init__()
         self.d_k = model_dim // num_heads
         self.model_dim = model_dim
@@ -88,7 +87,7 @@ class MultiHeadAttention(nn.Module):
 
 
 class FeedForward(nn.Module):
-    def __init__(self, model_dim, ffn_dim):
+    def __init__(self, model_dim: int, ffn_dim: int):
         super().__init__()
         self.sequence = nn.Sequential(
             nn.Linear(model_dim, ffn_dim, bias=False),
@@ -103,9 +102,9 @@ class FeedForward(nn.Module):
 class Encoder(nn.Module):
     def __init__(
         self,
-        model_dim,
-        ffn_dim,
-        num_heads,
+        model_dim: int,
+        ffn_dim: int,
+        num_heads: int,
     ):
         super().__init__()
         self.mha = MultiHeadAttention(model_dim=model_dim, num_heads=num_heads)
@@ -158,12 +157,12 @@ class BaseClassifier(nn.Module):
 class Classifier(BaseClassifier):
     def __init__(
         self,
-        patch_size: int,
-        model_dim: int,
-        ffn_dim: int,
-        num_heads: int,
-        num_encoders: int,
-        use_pe: bool,
+        patch_size: int = 14,
+        model_dim: int = 384,
+        ffn_dim: int = 64,
+        num_heads: int = 4,
+        num_encoders: int = 3,
+        use_pe: bool = True,
     ):
         super().__init__(
             patch_size=patch_size,
@@ -203,20 +202,24 @@ class Decoder(nn.Module):
 class Predictor(BaseClassifier):
     def __init__(
         self,
-        num_coders: int = 6,
         patch_size: int = 14,
+        model_dim: int = 384,
+        ffn_dim: int = 64,
         tfeatures: int = 11,
-        model_dim: int = 64,
-        use_pe=True,
+        num_heads: int = 4,
+        num_encoders: int = 3,
+        use_pe: bool = True,
     ):
         super().__init__(
             patch_size=patch_size,
             model_dim=model_dim,
-            num_encoders=num_coders,
+            num_encoders=num_encoders,
             use_pe=use_pe,
+            ffn_dim=ffn_dim,
+            num_heads=num_heads,
         )
         self.decoders = nn.ModuleList(
-            [Decoder(tfeatures, model_dim) for _ in range(num_coders)]
+            [Decoder(tfeatures, model_dim) for _ in range(num_encoders)]
         )
         self.linear = nn.Linear(tfeatures, 13)
 
