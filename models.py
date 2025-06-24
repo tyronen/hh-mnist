@@ -21,8 +21,9 @@ class PositionalEncoding(nn.Module):
         div_term = torch.exp(
             torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim)
         )
-        self.pe[:, 0::2] = torch.sin(position * div_term)
-        self.pe[:, 1::2] = torch.cos(position * div_term)
+        broadcast = position * div_term
+        self.pe[:, 0::2] = torch.sin(broadcast)
+        self.pe[:, 1::2] = torch.cos(broadcast)
         self.pe = self.pe.unsqueeze(0)  # add batch dimension
 
     def forward(self, x):
@@ -107,7 +108,12 @@ class Classifier(BaseClassifier):
         num_encoders: int = 6,
         use_pe: bool = True,
     ):
-        super().__init__(num_encoders, patch_size, model_dim, use_pe)
+        super().__init__(
+            patch_size=patch_size,
+            model_dim=model_dim,
+            num_encoders=num_encoders,
+            use_pe=use_pe,
+        )
         self.linear = nn.Linear(model_dim, 10)
 
     def forward(self, x):
