@@ -1,30 +1,34 @@
 import math
-
 import torch
 import torch.nn as nn
 
-
-PE_MAX_LEN = 64  # max length of pe, i.e. max number of patches we expect from a single image
-# TODO: expose these dims as hyperparams also (small values here could be a limiting factor)
-K_DIM = 24
-V_DIM = 32
+VOCAB_SIZE = 13  # digits 0-9, plus start, finish, pad
+PE_MAX_LEN = 64  # max length of pe, i.e. max number of patches we expect from an image
 
 
+# TODO: experiment with making the PE learnable
 # see disection with o3: https://chatgpt.com/share/685a8e42-8f04-8009-b87a-e30b6fbe56b5
 class PositionalEncoding(nn.Module):
-    def __init__(self, model_dim: int, max_len: int = PE_MAX_LEN):
+    def __init__(
+        self,
+        model_dim: int,
+        max_len: int = PE_MAX_LEN,
+        trainable: bool = False,
+    ):
         super().__init__()
-
-        pe = torch.zeros(max_len, model_dim)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim)
-        )
-        broadcast = position * div_term
-        pe[:, 0::2] = torch.sin(broadcast)
-        pe[:, 1::2] = torch.cos(broadcast)
-        pe = pe.unsqueeze(0)  # add batch dimension
-        self.register_buffer("pe", pe)
+        if trainable:
+            # Learnable positional encoding
+            self.pe = nn.Parameter(torch.randn(1, max_len, model_dim) * 0.02)
+        else:
+            # Fixed sinusoidal positional encoding (original implementation)
+            pe = torch.zeros(max_len, model_dim)
+            position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+            div_term = torch.exp(torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim))
+            broadcast = position * div_term
+            pe[:, 0::2] = torch.sin(broadcast)
+            pe[:, 1::2] = torch.cos(broadcast)
+            pe = pe.unsqueeze(0)  # add batch dimension
+            self.register_buffer("pe", pe)
 
     def forward(self, x):
         return x + self.pe[:, : x.size(1)]  # type: ignore
@@ -43,46 +47,71 @@ class Patchify(nn.Module):
         return self.linear(rotated)
 
 
-class AttentionHead(nn.Module):
-    def __init__(self, model_dim: int):
+def attention(k_dim, q, k, v, mask_tensor):
+    kt = k.transpose(-2, -1)
+    # do attention(Q, K, V) = softmax(Q·K^T / sqrt(dims))·V to get hidden state (where · is dot product)
+    attn_dot_product = torch.matmul(q, kt)
+    attn_scaled = attn_dot_product / math.sqrt(k_dim)
+    if mask_tensor is not None:
+        attn_scaled = attn_scaled.masked_fill(mask_tensor, -torch.inf)
+    attn_probs = torch.softmax(attn_scaled, dim=-1)
+    return torch.matmul(attn_probs, v)
+
+
+class SelfAttention(nn.Module):
+    def __init__(self, model_dim: int, num_heads: int, mask: bool):
         super().__init__()
+        self.num_heads = num_heads
         self.model_dim = model_dim
-        self.wq = nn.Linear(model_dim, K_DIM, bias=False)
-        self.wk = nn.Linear(model_dim, K_DIM, bias=False)
-        self.wv = nn.Linear(model_dim, V_DIM, bias=False)
-        self.endhead = nn.Linear(V_DIM, model_dim, bias=False)
+        self.k_dim = model_dim // num_heads
+        self.wqkv = nn.Linear(model_dim, 3 * model_dim, bias=False)
+        self.endmulti = nn.Linear(model_dim, model_dim, bias=False)
+        self.mask = mask
+
+    def rearrange(self, vector, B, L):
+        return vector.reshape(B, L, self.num_heads, self.k_dim).transpose(1, 2)
 
     def forward(self, x):
-        q = self.wq(x)
-        k = self.wk(x)
-        v = self.wv(x)
-        kt = k.permute(0, 2, 1)
+        B, L, D = x.shape
+        qkv = self.wqkv(x)
+        q, k, v = qkv.split(self.model_dim, dim=-1)
+        qh = self.rearrange(q, B, L)
+        kh = self.rearrange(k, B, L)
+        vh = self.rearrange(v, B, L)
+        mask_tensor = None
+        if self.mask:
+            mask_tensor = torch.triu(torch.ones(L, L, device=x.device), diagonal=1).bool()
 
-        # do attention(Q, K, V) = softmax(Q·K^T / sqrt(dims))·V to get hidden state (where · is dot product)
-        attn_dot_product = torch.matmul(q, kt)
-        attn_scaled = attn_dot_product / math.sqrt(K_DIM)
-        attn_probs = torch.softmax(attn_scaled, dim=1)
-        hidden = torch.matmul(attn_probs, v)
-        return self.endhead(hidden)
+        attended = attention(self.k_dim, qh, kh, vh, mask_tensor=mask_tensor)
+        concatted = attended.transpose(1, 2).reshape(B, L, self.model_dim)
+        return self.endmulti(concatted)
 
 
-class MultiHeadAttention(nn.Module):
+class CrossAttention(nn.Module):
     def __init__(self, model_dim: int, num_heads: int):
         super().__init__()
-        self.d_k = model_dim // num_heads
         self.model_dim = model_dim
-        self.heads = nn.ModuleList(
-            [AttentionHead(self.d_k) for _ in range(num_heads)]
-        )
+        self.num_heads = num_heads
+        self.k_dim = model_dim // num_heads
+        self.wq = nn.Linear(model_dim, model_dim, bias=False)
+        self.wk = nn.Linear(model_dim, model_dim, bias=False)
+        self.wv = nn.Linear(model_dim, model_dim, bias=False)
         self.endmulti = nn.Linear(model_dim, model_dim, bias=False)
 
-    def forward(self, x):
-        head_outputs = []
-        for head in self.heads:
-            head_outputs.append(head(x))
-        concatted = head_outputs[0]
-        for headed in head_outputs[1:]:
-            concatted = concatted + headed
+    def rearrange(self, vector, B, L):
+        return vector.reshape(B, L, self.num_heads, self.k_dim).transpose(1, 2)
+
+    def forward(self, images, texts):
+        B_image, L_image, D_image = images.shape
+        B_text, L_text, D_text = texts.shape
+        q = self.wq(texts)
+        k = self.wk(images)
+        v = self.wv(images)
+        qh = self.rearrange(q, B_text, L_text)
+        kh = self.rearrange(k, B_image, L_image)
+        vh = self.rearrange(v, B_image, L_image)
+        attended = attention(self.k_dim, qh, kh, vh, mask_tensor=None)
+        concatted = attended.transpose(1, 2).reshape(B_text, L_text, self.model_dim)
         return self.endmulti(concatted)
 
 
@@ -90,9 +119,9 @@ class FeedForward(nn.Module):
     def __init__(self, model_dim: int, ffn_dim: int):
         super().__init__()
         self.sequence = nn.Sequential(
-            nn.Linear(model_dim, ffn_dim, bias=False),
+            nn.Linear(model_dim, ffn_dim, bias=True),
             nn.ReLU(),
-            nn.Linear(ffn_dim, model_dim, bias=False),
+            nn.Linear(ffn_dim, model_dim, bias=True),
         )
 
     def forward(self, x):
@@ -107,7 +136,8 @@ class Encoder(nn.Module):
         num_heads: int,
     ):
         super().__init__()
-        self.mha = MultiHeadAttention(model_dim=model_dim, num_heads=num_heads)
+        # here, 'multi-head dot-product self attention blocks [...] completely replace convolutions' (see 16x16)
+        self.mha = SelfAttention(model_dim=model_dim, num_heads=num_heads, mask=False)
         self.norm1 = nn.LayerNorm(model_dim)
         self.ffn = FeedForward(model_dim, ffn_dim)
         self.norm2 = nn.LayerNorm(model_dim)
@@ -121,7 +151,26 @@ class Encoder(nn.Module):
         return self.norm2(addnormed + ffned)
 
 
-class BaseClassifier(nn.Module):
+class Decoder(nn.Module):
+    def __init__(self, model_dim: int, ffn_dim: int, num_heads: int):
+        super().__init__()
+        self.masked_self_mha = SelfAttention(model_dim=model_dim, num_heads=num_heads, mask=True)
+        self.norm1 = nn.LayerNorm(model_dim)
+        self.cross_mha = CrossAttention(model_dim=model_dim, num_heads=num_heads)
+        self.norm2 = nn.LayerNorm(model_dim)
+        self.ffn = FeedForward(model_dim=model_dim, ffn_dim=ffn_dim)
+        self.norm3 = nn.LayerNorm(model_dim)
+
+    def forward(self, images, text):
+        stage1 = self.masked_self_mha(text)
+        addnormed_text = self.norm1(text + stage1)
+        stage2 = self.cross_mha(images, addnormed_text)
+        addnormed_stage2 = self.norm2(addnormed_text + stage2)
+        ffned = self.ffn(addnormed_stage2)
+        return self.norm3(addnormed_stage2 + ffned)
+
+
+class BaseTransformer(nn.Module):
     def __init__(
         self,
         patch_size: int,
@@ -129,103 +178,100 @@ class BaseClassifier(nn.Module):
         ffn_dim: int,
         num_heads: int,
         num_encoders: int,
-        use_pe: bool,
+        use_cls: bool,
+        train_pe: bool = False,
     ):
         super().__init__()
         self.patchify = Patchify(patch_size, model_dim)
-        self.use_pe = use_pe
-        self.pe = PositionalEncoding(model_dim)
-        # here, 'multi-head dot-product self attention blocks [...] completely replace convolutions' (see 16x16)
-        self.encoders = nn.ModuleList(
-            [
-                Encoder(
-                    model_dim=model_dim, num_heads=num_heads, ffn_dim=ffn_dim
-                )
-                for _ in range(num_encoders)
-            ]
-        )
+        self.use_cls = use_cls
+        self.pe = PositionalEncoding(model_dim, trainable=train_pe)
+        self.cls_token = nn.Parameter(torch.randn(1, 1, model_dim))
+
+        def make_encoder() -> nn.Module:
+            return Encoder(model_dim=model_dim, num_heads=num_heads, ffn_dim=ffn_dim)
+
+        self.encoder_series = nn.ModuleList([make_encoder() for _ in range(num_encoders)])
 
     def forward(self, x):
+        B = x.size(0)
         patched = self.patchify(x)
-        if self.use_pe:
-            patched = self.pe(patched)
-        for encoder in self.encoders:
-            patched = encoder(patched)
-        return patched
+        D = patched.size(-1)
+        out = self.pe(patched)
+        if self.use_cls:
+            cls_expanded = self.cls_token.expand(B, 1, D)
+            out = torch.cat([cls_expanded, out], dim=1)
+        for encoder in self.encoder_series:
+            out = encoder(out)
+        return out
 
 
-class Classifier(BaseClassifier):
+class VitTransformer(nn.Module):
     def __init__(
         self,
-        patch_size: int = 14,
-        model_dim: int = 384,
-        ffn_dim: int = 64,
-        num_heads: int = 4,
-        num_encoders: int = 3,
-        use_pe: bool = True,
+        patch_size: int,
+        model_dim: int,
+        ffn_dim: int,
+        num_heads: int,
+        num_encoders: int,
+        train_pe: bool = False,
     ):
-        super().__init__(
+        super().__init__()
+        self.base_transformer = BaseTransformer(
             patch_size=patch_size,
             model_dim=model_dim,
             ffn_dim=ffn_dim,
             num_heads=num_heads,
             num_encoders=num_encoders,
-            use_pe=use_pe,
+            use_cls=True,
+            train_pe=train_pe,
         )
-        self.linear = nn.Linear(model_dim, 10)
+        self.linear = nn.Sequential(
+            nn.LayerNorm(model_dim),
+            nn.Linear(model_dim, model_dim),
+            nn.GELU(),
+            nn.Linear(model_dim, 10),
+        )
 
     def forward(self, x):
-        base = super().forward(x)
-        return self.linear(base).mean(dim=1)
+        base = self.base_transformer(x)
+        cls = base[:, 0, :]
+        return self.linear(cls)
 
 
-class Decoder(nn.Module):
-    def __init__(self, tfeatures, model_dim):
-        super().__init__()
-        self.wq = nn.Linear(tfeatures, 24, bias=False)
-        self.wk = nn.Linear(model_dim, 24, bias=False)
-        self.wv = nn.Linear(model_dim, 24, bias=False)
-        self.wh = nn.Linear(24, tfeatures, bias=False)
-
-    def forward(self, encoded, text):
-        q = self.wq(text)
-        k = self.wk(encoded)
-        v = self.wv(encoded)
-        kt = k.permute(0, 2, 1)
-        a = torch.matmul(q, kt)
-        a = a / math.sqrt(24)
-        a = torch.softmax(a, dim=1)
-        h1 = torch.matmul(a, v)
-        return self.wh(h1)
-
-
-class Predictor(BaseClassifier):
+class ComplexTransformer(nn.Module):
     def __init__(
         self,
-        patch_size: int = 14,
-        model_dim: int = 384,
-        ffn_dim: int = 64,
-        tfeatures: int = 11,
-        num_heads: int = 4,
-        num_encoders: int = 3,
-        use_pe: bool = True,
+        patch_size: int,
+        model_dim: int,
+        ffn_dim: int,
+        num_heads: int,
+        num_coders: int,
     ):
-        super().__init__(
+        super().__init__()
+        self.base_transformer = BaseTransformer(
             patch_size=patch_size,
             model_dim=model_dim,
-            num_encoders=num_encoders,
-            use_pe=use_pe,
             ffn_dim=ffn_dim,
             num_heads=num_heads,
+            num_encoders=num_coders,
+            use_cls=False,
         )
-        self.decoders = nn.ModuleList(
-            [Decoder(tfeatures, model_dim) for _ in range(num_encoders)]
+        self.embedding = nn.Embedding(
+            num_embeddings=VOCAB_SIZE, embedding_dim=model_dim
         )
-        self.linear = nn.Linear(tfeatures, 13)
+        self.pe = PositionalEncoding(model_dim=model_dim)
 
-    def forward(self, x, input_seqs):
-        encoded = super().forward(x)
-        x = input_seqs
-        for decoder in self.decoders:
-            x = decoder(encoded, x)
-        return self.linear(x).mean(dim=1)
+        def make_decoder() -> nn.Module:
+            return Decoder(model_dim=model_dim, ffn_dim=ffn_dim, num_heads=num_heads)
+
+        self.decoder_series = nn.ModuleList([make_decoder() for _ in range(num_coders)])
+
+        self.linear = nn.Linear(model_dim, VOCAB_SIZE)
+
+    def forward(self, images, input_seqs):
+        encoded = self.base_transformer(images)
+        text = self.embedding(input_seqs)
+        text = self.pe(text)
+        for decoder in self.decoder_series:
+            text = decoder(encoded, text)
+        return self.linear(text)

@@ -3,7 +3,7 @@ import logging
 from typing import Optional
 
 import torch
-from torch import autocast, GradScaler, optim, nn
+from torch import optim, nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split
@@ -11,9 +11,8 @@ from torchvision import datasets
 from torchvision.transforms import v2
 import wandb
 from tqdm import tqdm
-from contextlib import nullcontext
 
-from models import Classifier
+from models import VitTransformer
 import utils
 
 hyperparameters = {
@@ -22,51 +21,41 @@ hyperparameters = {
     "epochs": 20,
     "patience": 2,
     "patch_size": 14,  # base MNIST images are 28x28, so patch size of 7 -> 16 patches
-    "model_dim": 384,
+    "model_dim": 128,
     "ffn_dim": 64,
     "num_encoders": 3,
-    "num_heads": 8,
-    "use_pe": True,  # whether to use positional encoding
+    "num_heads": 4,
     "seed": 42,
+    "train_pe": False,
 }
 
 sweep_config = {
-    "method": "bayes",  # Can be 'grid', 'random', or 'bayes'
+    "method": "grid",  # Can be 'grid', 'random', or 'bayes'
     "metric": {"name": "test_accuracy", "goal": "maximize"},
     "parameters": {
-        "batch_size": {"values": [512, 1024]},
-        "learning_rate": {"values": [1e-3, 1e-4]},
-        "epochs": {"values": [12, 16, 20]},
+        "batch_size": {"values": [2048]},
+        "learning_rate": {"values": [1e-4]},
+        "epochs": {"values": [32]},
         "patience": {"values": [2]},
-        "patch_size": {"values": [7, 14]},
-        "model_dim": {"values": [64, 128, 384]},
-        "ffn_dim": {"values": [64]},
-        "num_encoders": {"values": [2, 3, 4, 5]},
-        "num_heads": {"values": [1, 2, 4, 8]},
-        "use_pe": {"values": [True, False]},
+        "patch_size": {"values": [14]},
+        "model_dim": {"values": [512]},
+        "ffn_dim": {"values": [2048, 4096]},
+        "num_encoders": {"values": [4, 5, 6]},
+        "num_heads": {"values": [16, 32, 64]},
+        "train_pe": {"values": [True, False]},
     },
 }
 
 parser = argparse.ArgumentParser(description="Train simple model")
 parser.add_argument("--entity", help="W and B entity", default="mlx-institute")
 parser.add_argument("--project", help="W and B project", default="encoder-only")
-parser.add_argument(
-    "--sweep", help="Run hyperparameter sweep", action="store_true"
-)
+parser.add_argument("--sweep", help="Run hyperparameter sweep", action="store_true")
 parser.add_argument(
     "--no-save",
     help="Don't save model state (or checkpoints)",
-    action="store_false",
+    action="store_true",
 )
 args = parser.parse_args()
-
-
-def amp_components(device, train=False):
-    if device.type == "cuda" and train:
-        return autocast(device.type), GradScaler("cuda")
-    else:
-        # fall-back: no automatic casting, dummy scaler
-        return nullcontext(), GradScaler(device=device.type, enabled=False)
 
 
 def run_batch(
@@ -93,11 +82,11 @@ def run_batch(
 
     iterator = tqdm(dataloader, desc=desc)
     context = torch.enable_grad() if train else torch.no_grad()
-    autocast, scaler = amp_components(device, train)
+    maybe_autocast, scaler = utils.amp_components(device, train)
     with context:
         for X, y in iterator:
             X, y = X.to(device), y.to(device)
-            with autocast:
+            with maybe_autocast:
                 pred = model(X)
                 loss = loss_fn(pred, y)
 
@@ -106,9 +95,7 @@ def run_batch(
 
             if train:
                 if optimizer is None:
-                    raise ValueError(
-                        "Optimizer must be provided when train=True"
-                    )
+                    raise ValueError("Optimizer must be provided when train=True")
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -123,26 +110,16 @@ def run_batch(
 
 def setup_data():
     """Setup and return datasets and dataloaders."""
-    transform = v2.Compose(
-        [v2.ToImage(), v2.ToDtype(torch.float32, scale=True)]
-    )
-    raw_data = datasets.MNIST(
-        root="data", train=True, download=True, transform=transform
-    )
-    stats_dataloader = DataLoader(
-        raw_data, batch_size=len(raw_data.data), shuffle=False
-    )
+    transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
+    raw_data = datasets.MNIST(root="data", train=True, download=True, transform=transform)
+    stats_dataloader = DataLoader(raw_data, batch_size=len(raw_data.data), shuffle=False)
     images, _ = next(iter(stats_dataloader))
 
     train_size = int(0.9 * len(raw_data))
     val_size = len(raw_data) - train_size
     generator = torch.Generator().manual_seed(hyperparameters["seed"])
-    training_data, val_data = random_split(
-        raw_data, [train_size, val_size], generator
-    )
-    test_data = datasets.MNIST(
-        root="data", train=False, download=True, transform=transform
-    )
+    training_data, val_data = random_split(raw_data, [train_size, val_size], generator)
+    test_data = datasets.MNIST(root="data", train=False, download=True, transform=transform)
 
     return training_data, val_data, test_data
 
@@ -151,6 +128,12 @@ def run_single_training(config=None):
     """Run a single training session with given config."""
     if config is None:
         config = hyperparameters
+
+    if config["model_dim"] % config["num_heads"] != 0:
+        logging.error(
+            f"model_dim must be a multiple of num_heads, {config['model_dim']}, {config['num_heads']} not permitted"
+        )
+        return None
 
     device = utils.get_device()
 
@@ -181,13 +164,13 @@ def run_single_training(config=None):
         num_workers=num_workers,
     )
 
-    model = Classifier(
+    model = VitTransformer(
         patch_size=config["patch_size"],
         model_dim=config["model_dim"],
         ffn_dim=config["ffn_dim"],
         num_encoders=config["num_encoders"],
         num_heads=config["num_heads"],
-        use_pe=config["use_pe"],
+        train_pe=config["train_pe"],
     )
     model.to(device)
 
@@ -211,8 +194,15 @@ def run_single_training(config=None):
 
     # if we stopped early and have a checkpoint, load it
     if not args.no_save:
-        checkpoint = torch.load(utils.SIMPLE_MODEL_FILE)
-        model.load_state_dict(checkpoint["model_state_dict"])
+        try:
+            checkpoint = torch.load(utils.SIMPLE_MODEL_FILE, weights_only=True, map_location=device)
+            model.load_state_dict(checkpoint["model_state_dict"])
+        except FileNotFoundError:
+            logging.warning(
+                f"Checkpoint file {utils.SIMPLE_MODEL_FILE} not found, using current model state"
+            )
+        except Exception as e:
+            logging.warning(f"Failed to load checkpoint: {e}, using current model state")
 
     test_correct, test_loss = run_batch(
         dataloader=test_dataloader,
@@ -231,7 +221,7 @@ def run_single_training(config=None):
 def main():
     utils.setup_logging()
     device = utils.get_device()
-    logging.info(f"Using {device} device")
+    logging.info(f"Using {device} device. Will save? {not args.no_save}")
     torch.backends.cudnn.benchmark = True
     torch.backends.cuda.matmul.allow_tf32 = True
     if device.type == "cuda":
@@ -248,8 +238,8 @@ def main():
 
         run_single_training(hyperparameters)
 
-        logging.info(f"Saved PyTorch Model State to {utils.SIMPLE_MODEL_FILE}")
         if not args.no_save:
+            logging.info(f"Saved PyTorch Model State to {utils.SIMPLE_MODEL_FILE}")
             artifact = wandb.Artifact(name="simple_model", type="model")
             artifact.add_file(utils.SIMPLE_MODEL_FILE)
             run.log_artifact(artifact)
@@ -299,6 +289,9 @@ def run_training(
             if not args.no_save:
                 model_dict = {
                     "model_state_dict": model.state_dict(),
+                    "config": dict(config),  # Ensure config is a plain dict
+                    "epoch": epoch,
+                    "best_loss": best_loss,
                 }
                 torch.save(model_dict, utils.SIMPLE_MODEL_FILE)
         else:
@@ -314,9 +307,7 @@ def run_sweep():
     print("Starting hyperparameter sweep...")
     print(f"Sweep configuration: {sweep_config}")
 
-    sweep_id = wandb.sweep(
-        sweep_config, project=args.project, entity=args.entity
-    )
+    sweep_id = wandb.sweep(sweep_config, project=args.project, entity=args.entity)
     print(f"Sweep ID: {sweep_id}")
     print("Run the following command to start agents:")
     print(f"wandb agent {args.entity}/{args.project}/{sweep_id}")
@@ -325,7 +316,7 @@ def run_sweep():
         sweep_id=sweep_id,
         function=sweep_train,
         project=args.project,
-        count=30,
+        count=36,
     )
 
 
