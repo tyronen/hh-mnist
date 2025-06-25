@@ -7,7 +7,7 @@ import logging
 from tqdm import tqdm
 
 import utils
-from models import Predictor
+from models import ComplexTransformer
 
 hyperparameters = {
     "batch_size": 64,
@@ -63,7 +63,7 @@ def main():
     train_dataloader = make_dataloader("data/composite_train.pt", device, shuffle=True)
     val_dataloader = make_dataloader("data/composite_val.pt", device, shuffle=False)
     test_dataloader = make_dataloader("data/composite_test.pt", device, shuffle=False)
-    model = Predictor().to(device)
+    model = ComplexTransformer().to(device)
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=hyperparameters["learning_rate"])
 

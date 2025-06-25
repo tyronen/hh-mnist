@@ -106,7 +106,7 @@ class Encoder(nn.Module):
         return self.norm2(addnormed + ffned)
 
 
-class BaseClassifier(nn.Module):
+class BaseTransformer(nn.Module):
     def __init__(
         self,
         patch_size: int,
@@ -146,7 +146,7 @@ class BaseClassifier(nn.Module):
         return withcls
 
 
-class Classifier(BaseClassifier):
+class SimpleTransformer(BaseTransformer):
     def __init__(
         self,
         patch_size: int = 14,
@@ -197,7 +197,7 @@ class Decoder(nn.Module):
         return self.wh(h1)
 
 
-class Predictor(BaseClassifier):
+class ComplexTransformer(BaseTransformer):
     def __init__(
         self,
         patch_size: int = 14,

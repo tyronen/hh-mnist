@@ -7,7 +7,7 @@ from PIL import Image, ImageOps
 from streamlit_drawable_canvas import st_canvas
 from torchvision import transforms
 
-from models import Classifier
+from models import SimpleTransformer
 import utils
 
 device = utils.get_device()
@@ -15,7 +15,7 @@ device = utils.get_device()
 
 @st.cache_resource
 def load_model():
-    model = Classifier()
+    model = SimpleTransformer()
     model_dict = torch.load(utils.SIMPLE_MODEL_FILE, map_location=device)
     model.load_state_dict(model_dict["model_state_dict"])
     model.eval()
