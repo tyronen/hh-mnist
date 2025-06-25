@@ -8,6 +8,10 @@ SWEEPABLE_KEYS = {
     "model.num_heads",
     "model.mlp_dim",
     "model.num_transformer_layers",
+    "model.avg_pooling",
+    "model.add_pos_emb",
+    "model.dropout",
+    "model.dot_product_norm",
     "train.epochs",
     "train.lr"
 }

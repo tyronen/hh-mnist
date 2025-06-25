@@ -84,7 +84,7 @@ def eval_one_epoch(model, dataloader, criterion, device, return_preds_labels=Fal
     return avg_loss, acc
 
 
-def train_model(train_loader, val_loader, test_loader, device, model, num_epochs = 10, lr=3e-4, log_wandb=False):
+def train_classifier(train_loader, val_loader, test_loader, device, model, num_epochs = 10, lr=3e-4, log_wandb=False):
     model.to(device)
 
     criterion = nn.CrossEntropyLoss()

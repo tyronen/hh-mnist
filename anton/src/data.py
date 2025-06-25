@@ -14,10 +14,14 @@ import os
 
 
 # TODO:
-# 1. Constants for special tokens
 # 2. Wrap into <start> <end>
 # 3. don't hardcode size 28.
 # 4. Replace transforms.Normalize((0.1307,), (0.3081,)) with the real mean and std for the dataset.
+
+
+PAD_TOKEN = 10
+START_TOKEN = 11
+END_TOKEN = 12
 
 
 def patchify(img, patch_size=14):
@@ -197,31 +201,36 @@ class CompositePatchifiedMNIST(Dataset):
         return self.samples[idx]
 
 
-def make_padded_collate_fn(pad_token=10):
-    def collate_fn(batch):
-        inputs, targets = zip(*batch)  # list of (input, target)
+def padded_collate_fn(batch):
+    inputs, targets = zip(*batch)  # list of (input, target)
 
-        # Collate input tensors normally (e.g., stacked patchified tensors)
-        inputs = default_collate(inputs)
+    # Collate input tensors (images or patchified inputs)
+    inputs = default_collate(inputs)
 
-        # Handle scalar targets
-        if isinstance(targets[0], torch.Tensor) and targets[0].ndim == 0:
-            targets = torch.stack(targets)
-        else:
-            # Pad variable-length label sequences
-            targets = pad_sequence(targets, batch_first=True, padding_value=pad_token)
+    # Convert all targets to tensors
+    targets = [torch.tensor(t) if not isinstance(t, torch.Tensor) else t for t in targets]
 
-        return inputs, targets
+    # If all targets are scalar (single value), stack them
+    if all(t.ndim == 0 for t in targets):
+        targets = torch.stack(targets)  # Shape: (B,)
+    else:
+        # Otherwise treat them as sequences. Include <START> and <END> tokens and pad
+        processed_targets = []
+        for seq in targets:
+            seq_tensor = torch.tensor([START_TOKEN] + list(seq) + [END_TOKEN], dtype=torch.long)
+            processed_targets.append(seq_tensor)
 
-    return collate_fn
+        targets = pad_sequence(processed_targets, batch_first=True, padding_value=PAD_TOKEN)  # Shape: (B, T)
+
+    return inputs, targets
 
 
 def load_mnist_dataloaders(cache_dir, batch_size=64, valid_fraction=0.2, patch_size=14,
                             seed=42, num_workers=2, composite_mode=False,
                             canvas_size=(56, 56), num_digits=4, placement='grid',
-                            num_digits_range=None, num_images=10000, num_images_test=2000,
-                            pad_token=10):
+                            num_digits_range=None, num_images=10000, num_images_test=2000):
 
+    # TODO Do not hardcode these parameters
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))
@@ -259,10 +268,8 @@ def load_mnist_dataloaders(cache_dir, batch_size=64, valid_fraction=0.2, patch_s
     generator = torch.Generator().manual_seed(seed)
     train_dataset, val_dataset = random_split(full_dataset, [train_size, valid_size], generator=generator)
 
-    collate_fn = make_padded_collate_fn(pad_token=pad_token)
-
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, collate_fn=collate_fn)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, collate_fn=collate_fn)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, collate_fn=padded_collate_fn)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, collate_fn=padded_collate_fn)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, collate_fn=padded_collate_fn)
 
     return train_loader, val_loader, test_loader

@@ -9,24 +9,35 @@ metric:
 
 parameters:
   train.lr:
-    values: [0.0001, 0.0003, 0.001]
+    values: [0.0001, 0.0003, 0.001, 0.003, 0.01]
   train.epochs:
     values: [5, 10]
   dataset.batch_size:
     values: [32, 64, 128]
   model.embed_dim:
-    values: [32, 64, 128]
+    values: [32, 64, 128, 256, 512]
   model.num_heads:
     values: [2, 4, 8]
   model.mlp_dim:
     values: [64, 128, 256]
   model.num_transformer_layers:
-    values: [4, 6, 8]
+    values: [1, 2, 4, 6, 8]
+  model.avg_pooling:
+    values: [false, true]
+  model.add_pos_emb:
+    values: [false, true]
+  model.dropout:
+    min: 0.0
+    max: 0.5
+  model.dot_product_norm:
+    values: [false, true]
 
 program: src/main.py
 command:
   - ${env}
   - python
   - ${program}
+  - --mode
+  - classifier
   - --config
-  - config/base.yaml
+  - config/default_classifier.yaml
