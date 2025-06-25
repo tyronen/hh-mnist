@@ -30,7 +30,7 @@ hyperparameters = {
 }
 
 sweep_config = {
-    "method": "bayes",  # Can be 'grid', 'random', or 'bayes'
+    "method": "grid",  # Can be 'grid', 'random', or 'bayes'
     "metric": {"name": "test_accuracy", "goal": "maximize"},
     "parameters": {
         "batch_size": {"values": [2048]},
@@ -307,7 +307,7 @@ def run_sweep():
         sweep_id=sweep_id,
         function=sweep_train,
         project=args.project,
-        count=40,
+        count=36,
     )
 
 
