@@ -26,6 +26,7 @@ hyperparameters = {
     "num_encoders": 3,
     "num_heads": 4,
     "seed": 42,
+    "train_pe": False,
 }
 
 sweep_config = {
@@ -33,14 +34,15 @@ sweep_config = {
     "metric": {"name": "test_accuracy", "goal": "maximize"},
     "parameters": {
         "batch_size": {"values": [2048]},
-        "learning_rate": {"values": [1e-4, 3e-4]},
-        "epochs": {"values": [25, 32, 40, 50]},
+        "learning_rate": {"values": [1e-4]},
+        "epochs": {"values": [32]},
         "patience": {"values": [2]},
         "patch_size": {"values": [14]},
-        "model_dim": {"values": [512]},
+        "model_dim": {"values": [512, 1024]},
         "ffn_dim": {"values": [1024, 2048, 4096]},
-        "num_encoders": {"values": [2, 5]},
-        "num_heads": {"values": [4, 8, 16]},
+        "num_encoders": {"values": [5, 6, 7]},
+        "num_heads": {"values": [16]},
+        "train_pe": {"values": [True, False]},
     },
 }
 
@@ -109,21 +111,15 @@ def run_batch(
 def setup_data():
     """Setup and return datasets and dataloaders."""
     transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
-    raw_data = datasets.MNIST(
-        root="data", train=True, download=True, transform=transform
-    )
-    stats_dataloader = DataLoader(
-        raw_data, batch_size=len(raw_data.data), shuffle=False
-    )
+    raw_data = datasets.MNIST(root="data", train=True, download=True, transform=transform)
+    stats_dataloader = DataLoader(raw_data, batch_size=len(raw_data.data), shuffle=False)
     images, _ = next(iter(stats_dataloader))
 
     train_size = int(0.9 * len(raw_data))
     val_size = len(raw_data) - train_size
     generator = torch.Generator().manual_seed(hyperparameters["seed"])
     training_data, val_data = random_split(raw_data, [train_size, val_size], generator)
-    test_data = datasets.MNIST(
-        root="data", train=False, download=True, transform=transform
-    )
+    test_data = datasets.MNIST(root="data", train=False, download=True, transform=transform)
 
     return training_data, val_data, test_data
 
@@ -174,6 +170,7 @@ def run_single_training(config=None):
         ffn_dim=config["ffn_dim"],
         num_encoders=config["num_encoders"],
         num_heads=config["num_heads"],
+        train_pe=config["train_pe"],
     )
     model.to(device)
 

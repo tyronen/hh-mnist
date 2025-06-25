@@ -9,19 +9,26 @@ PE_MAX_LEN = 64  # max length of pe, i.e. max number of patches we expect from a
 # TODO: experiment with making the PE learnable
 # see disection with o3: https://chatgpt.com/share/685a8e42-8f04-8009-b87a-e30b6fbe56b5
 class PositionalEncoding(nn.Module):
-    def __init__(self, model_dim: int, max_len: int = PE_MAX_LEN):
+    def __init__(
+        self,
+        model_dim: int,
+        max_len: int = PE_MAX_LEN,
+        trainable: bool = False,
+    ):
         super().__init__()
-
-        pe = torch.zeros(max_len, model_dim)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim)
-        )
-        broadcast = position * div_term
-        pe[:, 0::2] = torch.sin(broadcast)
-        pe[:, 1::2] = torch.cos(broadcast)
-        pe = pe.unsqueeze(0)  # add batch dimension
-        self.register_buffer("pe", pe)
+        if trainable:
+            # Learnable positional encoding
+            self.pe = nn.Parameter(torch.randn(1, max_len, model_dim) * 0.02)
+        else:
+            # Fixed sinusoidal positional encoding (original implementation)
+            pe = torch.zeros(max_len, model_dim)
+            position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+            div_term = torch.exp(torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim))
+            broadcast = position * div_term
+            pe[:, 0::2] = torch.sin(broadcast)
+            pe[:, 1::2] = torch.cos(broadcast)
+            pe = pe.unsqueeze(0)  # add batch dimension
+            self.register_buffer("pe", pe)
 
     def forward(self, x):
         return x + self.pe[:, : x.size(1)]  # type: ignore
@@ -70,9 +77,7 @@ class SelfAttention(nn.Module):
         vh = v.reshape(B, self.num_heads, L, self.k_dim)
         mask_tensor = None
         if self.mask:
-            mask_tensor = torch.triu(
-                torch.ones(L, L, device=x.device), diagonal=1
-            ).bool()
+            mask_tensor = torch.triu(torch.ones(L, L, device=x.device), diagonal=1).bool()
 
         attended = attention(self.k_dim, qh, kh, vh, mask_tensor=mask_tensor)
         concatted = attended.transpose(1, 2).reshape(B, L, self.model_dim)
@@ -143,9 +148,7 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, model_dim: int, ffn_dim: int, num_heads: int):
         super().__init__()
-        self.masked_self_mha = SelfAttention(
-            model_dim=model_dim, num_heads=num_heads, mask=True
-        )
+        self.masked_self_mha = SelfAttention(model_dim=model_dim, num_heads=num_heads, mask=True)
         self.norm1 = nn.LayerNorm(model_dim)
         self.cross_mha = CrossAttention(model_dim=model_dim, num_heads=num_heads)
         self.norm2 = nn.LayerNorm(model_dim)
@@ -170,19 +173,18 @@ class BaseTransformer(nn.Module):
         num_heads: int,
         num_encoders: int,
         use_cls: bool,
+        train_pe: bool = False,
     ):
         super().__init__()
         self.patchify = Patchify(patch_size, model_dim)
         self.use_cls = use_cls
-        self.pe = PositionalEncoding(model_dim)
+        self.pe = PositionalEncoding(model_dim, trainable=train_pe)
         self.cls_token = nn.Parameter(torch.randn(1, 1, model_dim))
 
         def make_encoder() -> nn.Module:
             return Encoder(model_dim=model_dim, num_heads=num_heads, ffn_dim=ffn_dim)
 
-        self.encoder_series = nn.ModuleList(
-            [make_encoder() for _ in range(num_encoders)]
-        )
+        self.encoder_series = nn.ModuleList([make_encoder() for _ in range(num_encoders)])
 
     def forward(self, x):
         B = x.size(0)
@@ -205,6 +207,7 @@ class VitTransformer(nn.Module):
         ffn_dim: int,
         num_heads: int,
         num_encoders: int,
+        train_pe: bool = False,
     ):
         super().__init__()
         self.base_transformer = BaseTransformer(
@@ -214,6 +217,7 @@ class VitTransformer(nn.Module):
             num_heads=num_heads,
             num_encoders=num_encoders,
             use_cls=True,
+            train_pe=train_pe,
         )
         self.linear = nn.Sequential(
             nn.LayerNorm(model_dim),
@@ -246,9 +250,7 @@ class ComplexTransformer(nn.Module):
             num_encoders=num_coders,
             use_cls=False,
         )
-        self.embedding = nn.Embedding(
-            num_embeddings=VOCAB_SIZE, embedding_dim=model_dim
-        )
+        self.embedding = nn.Embedding(num_embeddings=VOCAB_SIZE, embedding_dim=model_dim)
 
         def make_decoder() -> nn.Module:
             return Decoder(model_dim=model_dim, ffn_dim=ffn_dim, num_heads=num_heads)
