@@ -7,12 +7,21 @@ import logging
 from tqdm import tqdm
 
 import utils
+from create_composite_images import PAD_TOKEN
 from models import ComplexTransformer
 
 hyperparameters = {
-    "batch_size": 64,
+    "batch_size": 1024,
     "learning_rate": 0.001,
     "epochs": 5,
+    "patience": 2,
+    "patch_size": 14,
+    "model_dim": 64,
+    "text_dim": 11,
+    "ffn_dim": 64,
+    "num_coders": 3,
+    "num_heads": 8,
+    "seed": 42,
 }
 
 
@@ -31,15 +40,17 @@ def make_dataloader(path, device, shuffle):
 def train(dataloader, model, loss_fn, optimizer, device, epoch):
     model.train()
     for images, input_seqs, output_seqs in tqdm(dataloader, f"Training epoch {epoch}"):
-        pred = model(images, input_seqs)
-        loss = loss_fn(pred, output_seqs)
+        logits = model(images, input_seqs)  # (B, seq_len, VOCAB)
+        loss = loss_fn(
+            logits.view(-1, logits.size(-1)), output_seqs.view(-1)  # (B*seq_len, VOCAB)
+        )  # (B*seq_len)
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
 
 
 def validate(dataloader, model, loss_fn, device, epoch):
-    size = len(dataloader.dataset)
+    size = 0
     num_batches = len(dataloader)
     model.eval()
     test_loss, correct = 0, 0
@@ -47,9 +58,11 @@ def validate(dataloader, model, loss_fn, device, epoch):
         for images, input_seqs, output_seqs in tqdm(
             dataloader, f"Validating epoch {epoch}"
         ):
-            pred = model(images, input_seqs)
-            test_loss += loss_fn(pred, output_seqs)
-            correct += (pred.argmax(1) == output_seqs).type(torch.float).sum().item()
+            logits = model(images, input_seqs)
+            test_loss += loss_fn(logits.view(-1, logits.size(-1)), output_seqs.view(-1))
+            mask = output_seqs != PAD_TOKEN
+            correct += ((logits.argmax(-1) == output_seqs) & mask).sum().item()
+            size += mask.sum().item()
     test_loss /= num_batches
     correct /= size
     logging.info(
@@ -63,8 +76,15 @@ def main():
     train_dataloader = make_dataloader("data/composite_train.pt", device, shuffle=True)
     val_dataloader = make_dataloader("data/composite_val.pt", device, shuffle=False)
     test_dataloader = make_dataloader("data/composite_test.pt", device, shuffle=False)
-    model = ComplexTransformer().to(device)
-    loss_fn = nn.CrossEntropyLoss()
+    model = ComplexTransformer(
+        patch_size=hyperparameters["patch_size"],
+        model_dim=hyperparameters["model_dim"],
+        ffn_dim=hyperparameters["ffn_dim"],
+        num_coders=hyperparameters["num_coders"],
+        num_heads=hyperparameters["num_heads"],
+        text_dim=hyperparameters["text_dim"],
+    ).to(device)
+    loss_fn = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
     optimizer = optim.Adam(model.parameters(), lr=hyperparameters["learning_rate"])
 
     for epoch in range(hyperparameters["epochs"]):

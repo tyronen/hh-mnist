@@ -13,7 +13,7 @@ import wandb
 from tqdm import tqdm
 from contextlib import nullcontext
 
-from models import SimpleTransformer
+from models import VitTransformer
 import utils
 
 hyperparameters = {
@@ -173,7 +173,7 @@ def run_single_training(config=None):
         num_workers=num_workers,
     )
 
-    model = SimpleTransformer(
+    model = VitTransformer(
         patch_size=config["patch_size"],
         model_dim=config["model_dim"],
         ffn_dim=config["ffn_dim"],
