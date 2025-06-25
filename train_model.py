@@ -194,8 +194,15 @@ def run_single_training(config=None):
 
     # if we stopped early and have a checkpoint, load it
     if not args.no_save:
-        checkpoint = torch.load(utils.SIMPLE_MODEL_FILE, weights_only=False)
-        model.load_state_dict(checkpoint["model_state_dict"])
+        try:
+            checkpoint = torch.load(utils.SIMPLE_MODEL_FILE, weights_only=True, map_location=device)
+            model.load_state_dict(checkpoint["model_state_dict"])
+        except FileNotFoundError:
+            logging.warning(
+                f"Checkpoint file {utils.SIMPLE_MODEL_FILE} not found, using current model state"
+            )
+        except Exception as e:
+            logging.warning(f"Failed to load checkpoint: {e}, using current model state")
 
     test_correct, test_loss = run_batch(
         dataloader=test_dataloader,
@@ -282,7 +289,9 @@ def run_training(
             if not args.no_save:
                 model_dict = {
                     "model_state_dict": model.state_dict(),
-                    "config": config,
+                    "config": dict(config),  # Ensure config is a plain dict
+                    "epoch": epoch,
+                    "best_loss": best_loss,
                 }
                 torch.save(model_dict, utils.SIMPLE_MODEL_FILE)
         else:
