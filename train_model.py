@@ -50,13 +50,11 @@ sweep_config = {
 parser = argparse.ArgumentParser(description="Train simple model")
 parser.add_argument("--entity", help="W and B entity", default="mlx-institute")
 parser.add_argument("--project", help="W and B project", default="encoder-only")
-parser.add_argument(
-    "--sweep", help="Run hyperparameter sweep", action="store_true"
-)
+parser.add_argument("--sweep", help="Run hyperparameter sweep", action="store_true")
 parser.add_argument(
     "--no-save",
     help="Don't save model state (or checkpoints)",
-    action="store_false",
+    action="store_true",
 )
 args = parser.parse_args()
 
@@ -93,11 +91,11 @@ def run_batch(
 
     iterator = tqdm(dataloader, desc=desc)
     context = torch.enable_grad() if train else torch.no_grad()
-    autocast, scaler = amp_components(device, train)
+    maybe_autocast, scaler = amp_components(device, train)
     with context:
         for X, y in iterator:
             X, y = X.to(device), y.to(device)
-            with autocast:
+            with maybe_autocast:
                 pred = model(X)
                 loss = loss_fn(pred, y)
 
@@ -106,9 +104,7 @@ def run_batch(
 
             if train:
                 if optimizer is None:
-                    raise ValueError(
-                        "Optimizer must be provided when train=True"
-                    )
+                    raise ValueError("Optimizer must be provided when train=True")
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -123,9 +119,7 @@ def run_batch(
 
 def setup_data():
     """Setup and return datasets and dataloaders."""
-    transform = v2.Compose(
-        [v2.ToImage(), v2.ToDtype(torch.float32, scale=True)]
-    )
+    transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
     raw_data = datasets.MNIST(
         root="data", train=True, download=True, transform=transform
     )
@@ -137,9 +131,7 @@ def setup_data():
     train_size = int(0.9 * len(raw_data))
     val_size = len(raw_data) - train_size
     generator = torch.Generator().manual_seed(hyperparameters["seed"])
-    training_data, val_data = random_split(
-        raw_data, [train_size, val_size], generator
-    )
+    training_data, val_data = random_split(raw_data, [train_size, val_size], generator)
     test_data = datasets.MNIST(
         root="data", train=False, download=True, transform=transform
     )
@@ -237,7 +229,7 @@ def run_single_training(config=None):
 def main():
     utils.setup_logging()
     device = utils.get_device()
-    logging.info(f"Using {device} device")
+    logging.info(f"Using {device} device. no_save: {args.no_save}")
     torch.backends.cudnn.benchmark = True
     torch.backends.cuda.matmul.allow_tf32 = True
     if device.type == "cuda":
@@ -254,8 +246,8 @@ def main():
 
         run_single_training(hyperparameters)
 
-        logging.info(f"Saved PyTorch Model State to {utils.SIMPLE_MODEL_FILE}")
         if not args.no_save:
+            logging.info(f"Saved PyTorch Model State to {utils.SIMPLE_MODEL_FILE}")
             artifact = wandb.Artifact(name="simple_model", type="model")
             artifact.add_file(utils.SIMPLE_MODEL_FILE)
             run.log_artifact(artifact)
@@ -320,9 +312,7 @@ def run_sweep():
     print("Starting hyperparameter sweep...")
     print(f"Sweep configuration: {sweep_config}")
 
-    sweep_id = wandb.sweep(
-        sweep_config, project=args.project, entity=args.entity
-    )
+    sweep_id = wandb.sweep(sweep_config, project=args.project, entity=args.entity)
     print(f"Sweep ID: {sweep_id}")
     print("Run the following command to start agents:")
     print(f"wandb agent {args.entity}/{args.project}/{sweep_id}")

@@ -46,7 +46,7 @@ def attention(k_dim, q, k, v):
     # do attention(Q, K, V) = softmax(Q·K^T / sqrt(dims))·V to get hidden state (where · is dot product)
     attn_dot_product = torch.matmul(q, kt)
     attn_scaled = attn_dot_product / math.sqrt(k_dim)
-    attn_probs = torch.softmax(attn_scaled, dim=1)
+    attn_probs = torch.softmax(attn_scaled, dim=-1)
     return torch.matmul(attn_probs, v)
 
 
@@ -136,7 +136,7 @@ class BaseClassifier(nn.Module):
     def forward(self, x):
         B = x.size(0)
         patched = self.patchify(x)
-        D = patched.size(2)
+        D = patched.size(-1)
         if self.use_pe:
             patched = self.pe(patched)
         cls_expanded = self.cls_token.expand(B, 1, D)
@@ -173,7 +173,8 @@ class Classifier(BaseClassifier):
 
     def forward(self, x):
         base = super().forward(x)
-        return self.linear(base).mean(dim=1)
+        cls = base[:, 0, :]
+        return self.linear(cls)
 
 
 class Decoder(nn.Module):
