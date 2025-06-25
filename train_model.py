@@ -3,7 +3,7 @@ import logging
 from typing import Optional
 
 import torch
-from torch import autocast, optim, nn, GradScaler
+from torch import optim, nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split
@@ -11,7 +11,6 @@ from torchvision import datasets
 from torchvision.transforms import v2
 import wandb
 from tqdm import tqdm
-from contextlib import nullcontext
 
 from models import VitTransformer
 import utils
@@ -59,14 +58,6 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-def amp_components(device, train=False):
-    if device.type == "cuda" and train:
-        return autocast(device.type), GradScaler(device.type)
-    else:
-        # fall-back: no automatic casting, dummy scaler
-        return nullcontext(), GradScaler(enabled=False)
-
-
 def run_batch(
     dataloader,
     model,
@@ -91,7 +82,7 @@ def run_batch(
 
     iterator = tqdm(dataloader, desc=desc)
     context = torch.enable_grad() if train else torch.no_grad()
-    maybe_autocast, scaler = amp_components(device, train)
+    maybe_autocast, scaler = utils.amp_components(device, train)
     with context:
         for X, y in iterator:
             X, y = X.to(device), y.to(device)
@@ -120,15 +111,21 @@ def run_batch(
 def setup_data():
     """Setup and return datasets and dataloaders."""
     transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
-    raw_data = datasets.MNIST(root="data", train=True, download=True, transform=transform)
-    stats_dataloader = DataLoader(raw_data, batch_size=len(raw_data.data), shuffle=False)
+    raw_data = datasets.MNIST(
+        root="data", train=True, download=True, transform=transform
+    )
+    stats_dataloader = DataLoader(
+        raw_data, batch_size=len(raw_data.data), shuffle=False
+    )
     images, _ = next(iter(stats_dataloader))
 
     train_size = int(0.9 * len(raw_data))
     val_size = len(raw_data) - train_size
     generator = torch.Generator().manual_seed(hyperparameters["seed"])
     training_data, val_data = random_split(raw_data, [train_size, val_size], generator)
-    test_data = datasets.MNIST(root="data", train=False, download=True, transform=transform)
+    test_data = datasets.MNIST(
+        root="data", train=False, download=True, transform=transform
+    )
 
     return training_data, val_data, test_data
 
@@ -291,6 +288,7 @@ def run_training(
             if not args.no_save:
                 model_dict = {
                     "model_state_dict": model.state_dict(),
+                    "config": config,
                 }
                 torch.save(model_dict, utils.SIMPLE_MODEL_FILE)
         else:
