@@ -194,7 +194,7 @@ def run_single_training(config=None):
 
     # if we stopped early and have a checkpoint, load it
     if not args.no_save:
-        checkpoint = torch.load(utils.SIMPLE_MODEL_FILE)
+        checkpoint = torch.load(utils.SIMPLE_MODEL_FILE, weights_only=False)
         model.load_state_dict(checkpoint["model_state_dict"])
 
     test_correct, test_loss = run_batch(
