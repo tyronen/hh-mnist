@@ -7,6 +7,7 @@ import torch.nn as nn
 PE_MAX_LEN = 64  # max length of pe, i.e. max number of patches we expect from an image
 
 
+# TODO: experiment with making the PE learnable
 # see disection with o3: https://chatgpt.com/share/685a8e42-8f04-8009-b87a-e30b6fbe56b5
 class PositionalEncoding(nn.Module):
     def __init__(self, model_dim: int, max_len: int = PE_MAX_LEN):
@@ -14,9 +15,7 @@ class PositionalEncoding(nn.Module):
 
         pe = torch.zeros(max_len, model_dim)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim)
-        )
+        div_term = torch.exp(torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim))
         broadcast = position * div_term
         pe[:, 0::2] = torch.sin(broadcast)
         pe[:, 1::2] = torch.cos(broadcast)
@@ -149,12 +148,12 @@ class BaseTransformer(nn.Module):
 class SimpleTransformer(BaseTransformer):
     def __init__(
         self,
-        patch_size: int = 14,
-        model_dim: int = 384,
-        ffn_dim: int = 64,
-        num_heads: int = 4,
-        num_encoders: int = 3,
-        use_pe: bool = True,
+        patch_size: int,
+        model_dim: int,
+        ffn_dim: int,
+        num_heads: int,
+        num_encoders: int,
+        use_pe: bool,
     ):
         super().__init__(
             patch_size=patch_size,
@@ -200,13 +199,13 @@ class Decoder(nn.Module):
 class ComplexTransformer(BaseTransformer):
     def __init__(
         self,
-        patch_size: int = 14,
-        model_dim: int = 384,
-        ffn_dim: int = 64,
-        tfeatures: int = 11,
-        num_heads: int = 4,
-        num_encoders: int = 3,
-        use_pe: bool = True,
+        patch_size: int,
+        model_dim: int,
+        ffn_dim: int,
+        tfeatures: int,
+        num_heads: int,
+        num_encoders: int,
+        use_pe: bool,
     ):
         super().__init__(
             patch_size=patch_size,
@@ -216,9 +215,7 @@ class ComplexTransformer(BaseTransformer):
             ffn_dim=ffn_dim,
             num_heads=num_heads,
         )
-        self.decoders = nn.ModuleList(
-            [Decoder(tfeatures, model_dim) for _ in range(num_encoders)]
-        )
+        self.decoders = nn.ModuleList([Decoder(tfeatures, model_dim) for _ in range(num_encoders)])
         self.linear = nn.Linear(tfeatures, 13)
 
     def forward(self, x, input_seqs):
