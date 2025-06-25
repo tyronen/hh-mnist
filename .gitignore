@@ -3,6 +3,8 @@ data/
 *.orig
 *.rej
 wandb/
+# macOS
+.DS_Store
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -197,3 +199,7 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+#ignore checkpoints (model files)
+.ben/checkpoints
+.ben/uv.lock
