@@ -34,15 +34,15 @@ sweep_config = {
     "method": "bayes",  # Can be 'grid', 'random', or 'bayes'
     "metric": {"name": "test_accuracy", "goal": "maximize"},
     "parameters": {
-        "batch_size": {"values": [1024, 2048]},
-        "learning_rate": {"values": [1e-3, 1e-4]},
-        "epochs": {"values": [20, 25, 30]},
+        "batch_size": {"values": [2048]},
+        "learning_rate": {"values": [1e-4, 3e-4]},
+        "epochs": {"values": [25, 32, 40, 50]},
         "patience": {"values": [2]},
-        "patch_size": {"values": [7, 14]},
-        "model_dim": {"values": [256, 512, 1024]},
-        "ffn_dim": {"values": [512, 1024, 2048]},
-        "num_encoders": {"values": [2, 3, 4, 5]},
-        "num_heads": {"values": [1, 2, 4, 8]},
+        "patch_size": {"values": [14]},
+        "model_dim": {"values": [512]},
+        "ffn_dim": {"values": [1024, 2048, 4096]},
+        "num_encoders": {"values": [2, 5]},
+        "num_heads": {"values": [4, 8, 16]},
         "use_pe": {"values": [True, False]},
     },
 }
@@ -50,9 +50,7 @@ sweep_config = {
 parser = argparse.ArgumentParser(description="Train simple model")
 parser.add_argument("--entity", help="W and B entity", default="mlx-institute")
 parser.add_argument("--project", help="W and B project", default="encoder-only")
-parser.add_argument(
-    "--sweep", help="Run hyperparameter sweep", action="store_true"
-)
+parser.add_argument("--sweep", help="Run hyperparameter sweep", action="store_true")
 parser.add_argument(
     "--no-save",
     help="Don't save model state (or checkpoints)",
@@ -106,9 +104,7 @@ def run_batch(
 
             if train:
                 if optimizer is None:
-                    raise ValueError(
-                        "Optimizer must be provided when train=True"
-                    )
+                    raise ValueError("Optimizer must be provided when train=True")
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -123,26 +119,16 @@ def run_batch(
 
 def setup_data():
     """Setup and return datasets and dataloaders."""
-    transform = v2.Compose(
-        [v2.ToImage(), v2.ToDtype(torch.float32, scale=True)]
-    )
-    raw_data = datasets.MNIST(
-        root="data", train=True, download=True, transform=transform
-    )
-    stats_dataloader = DataLoader(
-        raw_data, batch_size=len(raw_data.data), shuffle=False
-    )
+    transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
+    raw_data = datasets.MNIST(root="data", train=True, download=True, transform=transform)
+    stats_dataloader = DataLoader(raw_data, batch_size=len(raw_data.data), shuffle=False)
     images, _ = next(iter(stats_dataloader))
 
     train_size = int(0.9 * len(raw_data))
     val_size = len(raw_data) - train_size
     generator = torch.Generator().manual_seed(hyperparameters["seed"])
-    training_data, val_data = random_split(
-        raw_data, [train_size, val_size], generator
-    )
-    test_data = datasets.MNIST(
-        root="data", train=False, download=True, transform=transform
-    )
+    training_data, val_data = random_split(raw_data, [train_size, val_size], generator)
+    test_data = datasets.MNIST(root="data", train=False, download=True, transform=transform)
 
     return training_data, val_data, test_data
 
@@ -255,9 +241,7 @@ def main():
         run_single_training(hyperparameters)
 
         if not args.no_save:
-            logging.info(
-                f"Saved PyTorch Model State to {utils.SIMPLE_MODEL_FILE}"
-            )
+            logging.info(f"Saved PyTorch Model State to {utils.SIMPLE_MODEL_FILE}")
             artifact = wandb.Artifact(name="simple_model", type="model")
             artifact.add_file(utils.SIMPLE_MODEL_FILE)
             run.log_artifact(artifact)
@@ -322,9 +306,7 @@ def run_sweep():
     print("Starting hyperparameter sweep...")
     print(f"Sweep configuration: {sweep_config}")
 
-    sweep_id = wandb.sweep(
-        sweep_config, project=args.project, entity=args.entity
-    )
+    sweep_id = wandb.sweep(sweep_config, project=args.project, entity=args.entity)
     print(f"Sweep ID: {sweep_id}")
     print("Run the following command to start agents:")
     print(f"wandb agent {args.entity}/{args.project}/{sweep_id}")
@@ -333,7 +315,7 @@ def run_sweep():
         sweep_id=sweep_id,
         function=sweep_train,
         project=args.project,
-        count=30,
+        count=40,
     )
 
 
