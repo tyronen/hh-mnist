@@ -4,10 +4,7 @@ import torch
 import torch.nn as nn
 
 
-PE_MAX_LEN = 64  # max length of pe, i.e. max number of patches we expect from a single image
-# TODO: expose these dims as hyperparams also (small values here could be a limiting factor)
-K_DIM = 24
-V_DIM = 32
+PE_MAX_LEN = 64  # max length of pe, i.e. max number of patches we expect from an image
 
 
 # see disection with o3: https://chatgpt.com/share/685a8e42-8f04-8009-b87a-e30b6fbe56b5
@@ -43,46 +40,34 @@ class Patchify(nn.Module):
         return self.linear(rotated)
 
 
-class AttentionHead(nn.Module):
-    def __init__(self, model_dim: int):
-        super().__init__()
-        self.model_dim = model_dim
-        self.wq = nn.Linear(model_dim, K_DIM, bias=False)
-        self.wk = nn.Linear(model_dim, K_DIM, bias=False)
-        self.wv = nn.Linear(model_dim, V_DIM, bias=False)
-        self.endhead = nn.Linear(V_DIM, model_dim, bias=False)
+def attention(k_dim, q, k, v):
+    kt = k.permute(0, 1, 3, 2)
 
-    def forward(self, x):
-        q = self.wq(x)
-        k = self.wk(x)
-        v = self.wv(x)
-        kt = k.permute(0, 2, 1)
-
-        # do attention(Q, K, V) = softmax(Q·K^T / sqrt(dims))·V to get hidden state (where · is dot product)
-        attn_dot_product = torch.matmul(q, kt)
-        attn_scaled = attn_dot_product / math.sqrt(K_DIM)
-        attn_probs = torch.softmax(attn_scaled, dim=1)
-        hidden = torch.matmul(attn_probs, v)
-        return self.endhead(hidden)
+    # do attention(Q, K, V) = softmax(Q·K^T / sqrt(dims))·V to get hidden state (where · is dot product)
+    attn_dot_product = torch.matmul(q, kt)
+    attn_scaled = attn_dot_product / math.sqrt(k_dim)
+    attn_probs = torch.softmax(attn_scaled, dim=1)
+    return torch.matmul(attn_probs, v)
 
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, model_dim: int, num_heads: int):
         super().__init__()
-        self.d_k = model_dim // num_heads
+        self.num_heads = num_heads
         self.model_dim = model_dim
-        self.heads = nn.ModuleList(
-            [AttentionHead(self.d_k) for _ in range(num_heads)]
-        )
+        self.k_dim = model_dim // num_heads
+        self.wqkv = nn.Linear(model_dim, 3 * model_dim, bias=False)
         self.endmulti = nn.Linear(model_dim, model_dim, bias=False)
 
     def forward(self, x):
-        head_outputs = []
-        for head in self.heads:
-            head_outputs.append(head(x))
-        concatted = head_outputs[0]
-        for headed in head_outputs[1:]:
-            concatted = concatted + headed
+        B, L, D = x.shape
+        qkv = self.wqkv(x)
+        q, k, v = qkv.split(self.model_dim, dim=-1)
+        qh = q.reshape(B, self.num_heads, L, self.k_dim)
+        kh = k.reshape(B, self.num_heads, L, self.k_dim)
+        vh = v.reshape(B, self.num_heads, L, self.k_dim)
+        attended = attention(self.k_dim, qh, kh, vh)
+        concatted = attended.transpose(1, 2).reshape(B, L, self.model_dim)
         return self.endmulti(concatted)
 
 
@@ -90,9 +75,9 @@ class FeedForward(nn.Module):
     def __init__(self, model_dim: int, ffn_dim: int):
         super().__init__()
         self.sequence = nn.Sequential(
-            nn.Linear(model_dim, ffn_dim, bias=False),
+            nn.Linear(model_dim, ffn_dim, bias=True),
             nn.ReLU(),
-            nn.Linear(ffn_dim, model_dim, bias=False),
+            nn.Linear(ffn_dim, model_dim, bias=True),
         )
 
     def forward(self, x):
@@ -135,23 +120,30 @@ class BaseClassifier(nn.Module):
         self.patchify = Patchify(patch_size, model_dim)
         self.use_pe = use_pe
         self.pe = PositionalEncoding(model_dim)
+        self.cls_token = nn.Parameter(torch.randn(1, 1, model_dim))
         # here, 'multi-head dot-product self attention blocks [...] completely replace convolutions' (see 16x16)
         self.encoders = nn.ModuleList(
             [
                 Encoder(
-                    model_dim=model_dim, num_heads=num_heads, ffn_dim=ffn_dim
+                    model_dim=model_dim,
+                    num_heads=num_heads,
+                    ffn_dim=ffn_dim,
                 )
                 for _ in range(num_encoders)
             ]
         )
 
     def forward(self, x):
+        B = x.size(0)
         patched = self.patchify(x)
+        D = patched.size(2)
         if self.use_pe:
             patched = self.pe(patched)
+        cls_expanded = self.cls_token.expand(B, 1, D)
+        withcls = torch.cat([cls_expanded, patched], dim=1)
         for encoder in self.encoders:
-            patched = encoder(patched)
-        return patched
+            withcls = encoder(withcls)
+        return withcls
 
 
 class Classifier(BaseClassifier):
@@ -172,7 +164,12 @@ class Classifier(BaseClassifier):
             num_encoders=num_encoders,
             use_pe=use_pe,
         )
-        self.linear = nn.Linear(model_dim, 10)
+        self.linear = nn.Sequential(
+            nn.LayerNorm(model_dim),
+            nn.Linear(model_dim, model_dim),
+            nn.GELU(),
+            nn.Linear(model_dim, 10),
+        )
 
     def forward(self, x):
         base = super().forward(x)

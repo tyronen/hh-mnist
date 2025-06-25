@@ -40,7 +40,7 @@ sweep_config = {
         "patience": {"values": [2]},
         "patch_size": {"values": [7, 14]},
         "model_dim": {"values": [64, 128, 384]},
-        "ffn_dim": {"values": [64]},
+        "ffn_dim": {"values": [512]},
         "num_encoders": {"values": [2, 3, 4, 5]},
         "num_heads": {"values": [1, 2, 4, 8]},
         "use_pe": {"values": [True, False]},
@@ -151,6 +151,12 @@ def run_single_training(config=None):
     """Run a single training session with given config."""
     if config is None:
         config = hyperparameters
+
+    if config["model_dim"] % config["num_heads"] != 0:
+        logging.error(
+            f"model_dim must be a multiple of num_heads, {config['model_dim']}, {config['num_heads']} not permitted"
+        )
+        return None
 
     device = utils.get_device()
 
