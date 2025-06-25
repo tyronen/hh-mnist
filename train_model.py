@@ -25,7 +25,6 @@ hyperparameters = {
     "ffn_dim": 64,
     "num_encoders": 3,
     "num_heads": 4,
-    "use_pe": True,  # whether to use positional encoding
     "seed": 42,
 }
 
@@ -42,7 +41,6 @@ sweep_config = {
         "ffn_dim": {"values": [1024, 2048, 4096]},
         "num_encoders": {"values": [2, 5]},
         "num_heads": {"values": [4, 8, 16]},
-        "use_pe": {"values": [True, False]},
     },
 }
 
@@ -176,7 +174,6 @@ def run_single_training(config=None):
         ffn_dim=config["ffn_dim"],
         num_encoders=config["num_encoders"],
         num_heads=config["num_heads"],
-        use_pe=config["use_pe"],
     )
     model.to(device)
 

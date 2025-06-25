@@ -21,8 +21,7 @@ hyperparameters = {
     "patience": 2,
     "patch_size": 14,
     "model_dim": 64,
-    "text_dim": 11,
-    "ffn_dim": 64,
+    "ffn_dim": 512,
     "num_coders": 6,
     "num_heads": 8,
     "seed": 42,
@@ -118,7 +117,6 @@ def run_single_training(config=None):
         ffn_dim=hyperparameters["ffn_dim"],
         num_coders=hyperparameters["num_coders"],
         num_heads=hyperparameters["num_heads"],
-        text_dim=hyperparameters["text_dim"],
     ).to(device)
     loss_fn = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
     optimizer = optim.Adam(model.parameters(), lr=hyperparameters["learning_rate"])
