@@ -10,7 +10,7 @@ import logging
 from tqdm import tqdm
 
 import utils
-from create_composite_images import PAD_TOKEN
+from create_composite_images import PAD_TOKEN, END_TOKEN
 from models import ComplexTransformer
 import wandb
 
@@ -59,7 +59,7 @@ def run_batch(
     size = 0
     num_batches = len(dataloader)
     total_loss, correct = 0.0, 0
-
+    seq_total, seq_correct = 0, 0
     iterator = tqdm(dataloader, desc=desc)
     context = torch.enable_grad() if train else torch.no_grad()
     maybe_autocast, scaler = utils.amp_components(device, train)
@@ -77,10 +77,28 @@ def run_batch(
                     output_seqs.view(-1),  # (B*seq_len, VOCAB)
                 )  # (B*seq_len)
 
-            total_loss += loss
-            mask = output_seqs != PAD_TOKEN
-            correct += ((logits.argmax(-1) == output_seqs) & mask).sum().item()
-            size += mask.sum().item()
+                total_loss += loss
+                mask = (output_seqs != PAD_TOKEN) & (output_seqs != END_TOKEN)
+                pred = logits.argmax(-1)
+                batch_correct = ((pred == output_seqs) & mask).sum().item()
+                correct += batch_correct
+                batch_size = mask.sum().item()
+                size += batch_size
+                batch_seq_correct = (
+                    ((pred == output_seqs) | ~mask).all(dim=1).sum().item()
+                )
+                batch_seq_size = output_seqs.size(0)
+                seq_correct += batch_seq_correct
+                seq_total += batch_seq_size
+                wandb.log(
+                    {
+                        "batch_loss": loss.item(),
+                        "batch_non_padded_tokens": batch_size,
+                        "batch_predictions_correct": batch_correct,
+                        "batch_seq_correct": batch_seq_correct,
+                        "batch_seq_size": batch_seq_size,
+                    }
+                )
 
             if train:
                 if optimizer is None:
@@ -94,7 +112,20 @@ def run_batch(
 
     avg_loss = total_loss / num_batches
     accuracy = 100 * correct / size
-    return accuracy, avg_loss
+    seq_accuracy = 100 * seq_correct / seq_total
+    wandb.log(
+        {
+            "total_loss": total_loss,
+            "num_batches": num_batches,
+            "correct": correct,
+            "size": size,
+            "accuracy": accuracy,
+            "seq_accuracy": seq_accuracy,
+            "seq_total": seq_total,
+            "seq_correct": seq_correct,
+        }
+    )
+    return seq_accuracy, avg_loss
 
 
 def run_single_training(config=None):
@@ -214,7 +245,7 @@ def run_training(
             torch.save(model_dict, utils.COMPLEX_MODEL_FILE)
         else:
             epochs_since_best += 1
-        if epochs_since_best >= config["patience"]:
+        if epochs_since_best >= config["patience"] or best_loss == 0:
             break
 
     return model

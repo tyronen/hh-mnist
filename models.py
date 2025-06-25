@@ -68,13 +68,16 @@ class SelfAttention(nn.Module):
         self.endmulti = nn.Linear(model_dim, model_dim, bias=False)
         self.mask = mask
 
+    def rearrange(self, vector, B, L):
+        return vector.reshape(B, L, self.num_heads, self.k_dim).transpose(1, 2)
+
     def forward(self, x):
         B, L, D = x.shape
         qkv = self.wqkv(x)
         q, k, v = qkv.split(self.model_dim, dim=-1)
-        qh = q.reshape(B, self.num_heads, L, self.k_dim)
-        kh = k.reshape(B, self.num_heads, L, self.k_dim)
-        vh = v.reshape(B, self.num_heads, L, self.k_dim)
+        qh = self.rearrange(q, B, L)
+        kh = self.rearrange(k, B, L)
+        vh = self.rearrange(v, B, L)
         mask_tensor = None
         if self.mask:
             mask_tensor = torch.triu(torch.ones(L, L, device=x.device), diagonal=1).bool()
@@ -95,15 +98,18 @@ class CrossAttention(nn.Module):
         self.wv = nn.Linear(model_dim, model_dim, bias=False)
         self.endmulti = nn.Linear(model_dim, model_dim, bias=False)
 
+    def rearrange(self, vector, B, L):
+        return vector.reshape(B, L, self.num_heads, self.k_dim).transpose(1, 2)
+
     def forward(self, images, texts):
         B_image, L_image, D_image = images.shape
         B_text, L_text, D_text = texts.shape
         q = self.wq(texts)
         k = self.wk(images)
         v = self.wv(images)
-        qh = q.reshape(B_text, self.num_heads, L_text, self.k_dim)
-        kh = k.reshape(B_image, self.num_heads, L_image, self.k_dim)
-        vh = v.reshape(B_image, self.num_heads, L_image, self.k_dim)
+        qh = self.rearrange(q, B_text, L_text)
+        kh = self.rearrange(k, B_image, L_image)
+        vh = self.rearrange(v, B_image, L_image)
         attended = attention(self.k_dim, qh, kh, vh, mask_tensor=None)
         concatted = attended.transpose(1, 2).reshape(B_text, L_text, self.model_dim)
         return self.endmulti(concatted)
@@ -250,7 +256,10 @@ class ComplexTransformer(nn.Module):
             num_encoders=num_coders,
             use_cls=False,
         )
-        self.embedding = nn.Embedding(num_embeddings=VOCAB_SIZE, embedding_dim=model_dim)
+        self.embedding = nn.Embedding(
+            num_embeddings=VOCAB_SIZE, embedding_dim=model_dim
+        )
+        self.pe = PositionalEncoding(model_dim=model_dim)
 
         def make_decoder() -> nn.Module:
             return Decoder(model_dim=model_dim, ffn_dim=ffn_dim, num_heads=num_heads)
@@ -261,7 +270,8 @@ class ComplexTransformer(nn.Module):
 
     def forward(self, images, input_seqs):
         encoded = self.base_transformer(images)
-        embedded = self.embedding(input_seqs)
+        text = self.embedding(input_seqs)
+        text = self.pe(text)
         for decoder in self.decoder_series:
-            embedded = decoder(encoded, embedded)
-        return self.linear(embedded)
+            text = decoder(encoded, text)
+        return self.linear(text)
