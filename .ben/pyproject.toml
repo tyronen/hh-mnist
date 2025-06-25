@@ -1,0 +1,15 @@
+[project]
+name = "hh-mnist"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "matplotlib>=3.10.3",
+    "notebook>=7.4.3",
+    "streamlit>=1.46.0",
+    "streamlit-drawable-canvas>=0.9.3",
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "tqdm>=4.67.1",
+]
