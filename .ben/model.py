@@ -25,6 +25,18 @@ class PatchProjection(nn.Module):
         patches = patches.transpose(-2, -1)     # (batch_size, num_patches, patch_size * patch_size)
         x = self.linear(patches)                # (batch_size, num_patches, dim_model)
         return x
+    
+class FeedForward(nn.Module):
+    def __init__(self, dim_model, dim_ffn):
+        super().__init__()
+        self.linear_1 = nn.Linear(dim_model, dim_ffn, bias=False)
+        self.linear_2 = nn.Linear(dim_ffn, dim_model, bias=False)
+    
+    def forward(self, x):
+        x = self.linear_1(x)
+        x = torch.relu(x)
+        x = self.linear_2(x)
+        return x
 
 class Attention(nn.Module):
     def __init__(self, dim_model, dim_k, dim_v):
@@ -58,9 +70,11 @@ class Encoder(nn.Module):
             dim_k, 
             dim_v,
             has_pre_attention_norm: bool,
-            has_post_attention_norm: bool):
+            has_post_attention_norm: bool,
+            has_post_ffn_norm: bool):
         super().__init__()
         self.attention = Attention(dim_model, dim_k, dim_v)
+        self.feed_forward = FeedForward(dim_model, dim_model)
         if has_pre_attention_norm:
             self.pre_attention_norm = nn.LayerNorm(dim_model)
         else:
@@ -69,6 +83,10 @@ class Encoder(nn.Module):
             self.post_attention_norm = nn.LayerNorm(dim_model)
         else:
             self.post_attention_norm = None
+        if has_post_ffn_norm:
+            self.post_ffn_norm = nn.LayerNorm(dim_model)
+        else:
+            self.post_ffn_norm = None
 
     def forward(self, x):
         original_x = x
@@ -78,6 +96,9 @@ class Encoder(nn.Module):
         x = x + original_x
         if self.post_attention_norm is not None:
             x = self.post_attention_norm(x)
+        x = self.feed_forward(x)
+        if self.post_ffn_norm is not None:
+            x = self.post_ffn_norm(x)
         return x
     
 
@@ -92,7 +113,7 @@ class Classifier(nn.Module):
             has_positional_encoding: bool,
             has_input_norm: bool,
             has_post_attention_norm: bool,
-            has_post_mlp_norm: bool,
+            has_post_ffn_norm: bool,
             has_pre_attention_norm: bool,
             has_final_norm: bool,
             num_encoders: int):
@@ -109,9 +130,14 @@ class Classifier(nn.Module):
                     dim_k=dim_k, 
                     dim_v=dim_v,
                     has_pre_attention_norm=has_pre_attention_norm,
-                    has_post_attention_norm=has_post_attention_norm
+                    has_post_attention_norm=has_post_attention_norm,
+                    has_post_ffn_norm=has_post_ffn_norm
                 ) for _ in range(num_encoders)]
         )
+        if has_post_ffn_norm:
+            self.post_ffn_norm = nn.LayerNorm(dim_model)
+        else:
+            self.post_ffn_norm = None
         self.final_projection = nn.Linear(dim_model, 10)
         if has_input_norm:
             self.input_norm = nn.LayerNorm(dim_model)

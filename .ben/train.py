@@ -24,9 +24,9 @@ hyperparameters = {
     "has_positional_encoding": True,
     #noralization
     "has_input_norm": True,
-    "has_post_attention_norm": False,
-    "has_post_mlp_norm": False,
-    "has_pre_attention_norm": False,
+    "has_pre_attention_norm": True,
+    "has_post_attention_norm": True,
+    "has_post_ffn_norm": True,
     "has_final_norm": False
 }
 
@@ -87,7 +87,7 @@ def main():
         has_positional_encoding=hyperparameters["has_positional_encoding"],
         has_input_norm=hyperparameters["has_input_norm"],
         has_post_attention_norm=hyperparameters["has_post_attention_norm"],
-        has_post_mlp_norm=hyperparameters["has_post_mlp_norm"],
+        has_post_ffn_norm=hyperparameters["has_post_ffn_norm"],
         has_pre_attention_norm=hyperparameters["has_pre_attention_norm"],
         has_final_norm=hyperparameters["has_final_norm"],
         num_encoders=hyperparameters["num_encoders"]
@@ -122,7 +122,7 @@ def main():
                 "has_positional_encoding": hyperparameters["has_positional_encoding"],
                 "has_input_norm": hyperparameters["has_input_norm"],
                 "has_post_attention_norm": hyperparameters["has_post_attention_norm"],
-                "has_post_mlp_norm": hyperparameters["has_post_mlp_norm"],
+                "has_post_ffn_norm": hyperparameters["has_post_ffn_norm"],
                 "has_pre_attention_norm": hyperparameters["has_pre_attention_norm"],
                 "has_final_norm": hyperparameters["has_final_norm"],
                 "num_encoders": hyperparameters["num_encoders"],
