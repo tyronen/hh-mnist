@@ -114,8 +114,17 @@ def run_batch(
 def setup_data():
     """Setup and return datasets and dataloaders."""
     # TODO: add some augmentation here to improve model robustness (e.g. random rotation/affine/perspective)
-    transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
-    raw_data = datasets.MNIST(root="data", train=True, download=True, transform=transform)
+    train_transform = v2.Compose(
+        [
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
+            # 'augment' training data by randomly applying wonkiness
+            v2.RandomAffine(degrees=10, translate=(0.1, 0.1)),  # type: ignore
+        ]
+    )
+    test_transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
+
+    raw_data = datasets.MNIST(root="data", train=True, download=True, transform=train_transform)
     stats_dataloader = DataLoader(raw_data, batch_size=len(raw_data.data), shuffle=False)
     images, _ = next(iter(stats_dataloader))
 
@@ -123,7 +132,7 @@ def setup_data():
     val_size = len(raw_data) - train_size
     generator = torch.Generator().manual_seed(hyperparameters["seed"])
     training_data, val_data = random_split(raw_data, [train_size, val_size], generator)
-    test_data = datasets.MNIST(root="data", train=False, download=True, transform=transform)
+    test_data = datasets.MNIST(root="data", train=False, download=True, transform=test_transform)
 
     return training_data, val_data, test_data
 
