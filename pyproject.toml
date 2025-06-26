@@ -5,12 +5,15 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "matplotlib>=3.10.3",
-    "notebook>=6.5.5",
-    "streamlit>=1.46.0",
-    "streamlit-drawable-canvas>=0.9.3",
-    "torch>=2.5.0",
-    "torchvision>=0.20.0",
+    # DO NOT PUT torch or anything depending on numpy here! 
+    # That would overwrite Computa's versions
     "tqdm>=4.67.1",
     "wandb>=0.20.1",
+]
+
+inference = [
+    "streamlit>=1.46.0",
+    "streamlit-drawable-canvas>=0.9.3",
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
 ]

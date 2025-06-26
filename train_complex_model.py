@@ -27,6 +27,7 @@ hyperparameters = {
     "num_heads": 8,
     "seed": 42,
     "dropout_rate": 0.1,
+    "train_pe": False,
 }
 
 parser = argparse.ArgumentParser(description="Train simple model")
@@ -36,14 +37,17 @@ args = parser.parse_args()
 
 
 def make_dataloader(path, device, shuffle):
-    tensors = torch.load(path, map_location=device)
+    tensors = torch.load(path, map_location="cpu")
     dataset = TensorDataset(
-        tensors["images"].to(device),
-        tensors["input_seqs"].to(device),
-        tensors["output_seqs"].to(device),
+        tensors["images"],
+        tensors["input_seqs"],
+        tensors["output_seqs"],
     )
+    pin_memory = device.type == "cuda"
+    num_workers = 8 if device.type == "cuda" else 0
+    persistent_workers = num_workers > 0
     return DataLoader(
-        dataset, batch_size=hyperparameters["batch_size"], shuffle=shuffle
+        dataset, batch_size=hyperparameters["batch_size"], shuffle=shuffle, pin_memory=pin_memory, num_workers=num_workers, persistent_workers=persistent_workers
     )
 
 
@@ -68,9 +72,9 @@ def run_batch(
     with context:
         for images, input_seqs, output_seqs in iterator:
             images, input_seqs, output_seqs = (
-                images.to(device),
-                input_seqs.to(device),
-                output_seqs.to(device),
+                images.to(device, non_blocking=True),
+                input_seqs.to(device, non_blocking=True),
+                output_seqs.to(device, non_blocking=True),
             )
             with maybe_autocast:
                 logits = model(images, input_seqs)
@@ -140,6 +144,7 @@ def run_single_training(config=None):
         num_coders=hyperparameters["num_coders"],
         num_heads=hyperparameters["num_heads"],
         dropout_rate=hyperparameters["dropout_rate"],
+        train_pe=hyperparameters["train_pe"]
     ).to(device)
     loss_fn = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN, label_smoothing=0.1)
     optimizer = optim.Adam(model.parameters(), lr=hyperparameters["learning_rate"])
@@ -207,7 +212,7 @@ def run_training(
     wandb.define_metric("val_loss", summary="min")
     best_loss = float("inf")
     epochs_since_best = 0
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+    scheduler = ReduceLROnPlateau(
         optimizer, mode="min", patience=2, factor=0.5
     )
     for epoch in range(config["epochs"]):

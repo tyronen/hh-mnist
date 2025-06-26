@@ -268,6 +268,7 @@ class ComplexTransformer(nn.Module):
         num_heads: int,
         num_coders: int,
         dropout: float,
+        train_pe: bool,
     ):
         super().__init__()
         self.base_transformer = BaseTransformer(
@@ -277,6 +278,7 @@ class ComplexTransformer(nn.Module):
             num_heads=num_heads,
             num_encoders=num_coders,
             dropout=dropout,
+            train_pe=train_pe,
             use_cls=False,
         )
         self.embedding = nn.Embedding(num_embeddings=VOCAB_SIZE, embedding_dim=model_dim)

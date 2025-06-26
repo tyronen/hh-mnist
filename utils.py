@@ -2,7 +2,7 @@ import logging
 from contextlib import nullcontext
 
 import torch
-from torch import autocast, GradScaler
+from torch.cuda.amp import autocast, GradScaler
 
 
 SIMPLE_MODEL_FILE = "data/simple.pth"
@@ -26,7 +26,7 @@ def get_device():
 
 def amp_components(device, train=False):
     if device.type == "cuda" and train:
-        return autocast(device.type), GradScaler(device.type)
+        return autocast(), GradScaler()
     else:
         # fall-back: no automatic casting, dummy scaler
         return nullcontext(), GradScaler(enabled=False)
