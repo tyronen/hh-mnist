@@ -43,7 +43,7 @@ def run_profiler():
         ffn_dim=hyperparameters["ffn_dim"],
         num_coders=hyperparameters["num_coders"],
         num_heads=hyperparameters["num_heads"],
-        dropout_rate=hyperparameters["dropout_rate"],
+        dropout=hyperparameters["dropout"],
         train_pe=hyperparameters["train_pe"],
     ).to(device)
 

@@ -26,7 +26,7 @@ hyperparameters = {
     "num_coders": 6,
     "num_heads": 8,
     "seed": 42,
-    "dropout_rate": 0.1,
+    "dropout": 0.1,
     "train_pe": False,
 }
 
@@ -132,6 +132,8 @@ def run_single_training(config=None):
     logging.info(f"Using {device} device.")
     torch.backends.cudnn.benchmark = True
     torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cuda.enable_flash_sdp(True)
+
     if device.type == "cuda":
         torch.set_float32_matmul_precision("medium")
     train_dataloader = make_dataloader("data/composite_train.pt", device, shuffle=True)
@@ -143,7 +145,7 @@ def run_single_training(config=None):
         ffn_dim=hyperparameters["ffn_dim"],
         num_coders=hyperparameters["num_coders"],
         num_heads=hyperparameters["num_heads"],
-        dropout_rate=hyperparameters["dropout_rate"],
+        dropout=hyperparameters["dropout"],
         train_pe=hyperparameters["train_pe"]
     ).to(device)
     loss_fn = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN, label_smoothing=0.1)
