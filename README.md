@@ -8,9 +8,12 @@ Hyperparameter Hippies MNIST project
 # on local machine
 ./send.sh
 # on Nvidia machine
-./ssh.sh
-uv run train_model.py # encoder-only
-uv run train_complex_model.py # encoder-decoder
+source ssh.sh
+# encoder-only
+uv run train_model.py --entity wandb-team --project wandb-project
+# encoder-decoder
+uv run create_composite_images.py
+uv run train_complex_model.py --entity wandb-team --project wandb-project
 ```
 
 Data will be placed in the `data` directory.

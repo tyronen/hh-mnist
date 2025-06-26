@@ -195,8 +195,6 @@ class BaseTransformer(nn.Module):
         num_encoders: int,
         use_cls: bool,
         dropout: float,
-        use_patch_norm: bool = True,
-        train_pe: bool = False,
     ):
         super().__init__()
         self.patchify = Patchify(patch_size, model_dim)
@@ -278,7 +276,6 @@ class ComplexTransformer(nn.Module):
             num_heads=num_heads,
             num_encoders=num_coders,
             dropout=dropout,
-            train_pe=train_pe,
             use_cls=False,
         )
         self.embedding = nn.Embedding(num_embeddings=VOCAB_SIZE, embedding_dim=model_dim)
