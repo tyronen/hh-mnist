@@ -1,5 +1,8 @@
+import inspect
 import random
 import string
+
+from create_composite_images import START_TOKEN, END_TOKEN, PAD_TOKEN
 
 import streamlit as st
 import torch
@@ -7,7 +10,7 @@ from PIL import Image, ImageOps
 from streamlit_drawable_canvas import st_canvas
 from torchvision import transforms
 
-from models import VitTransformer
+import models
 import utils
 
 device = utils.get_device()
@@ -15,51 +18,62 @@ device = utils.get_device()
 
 @st.cache_resource
 def load_model():
-    model = VitTransformer()
-    model_dict = torch.load(utils.SIMPLE_MODEL_FILE, map_location=device)
-    model.load_state_dict(model_dict["model_state_dict"])
+    checkpoint = torch.load(utils.COMPLEX_MODEL_FILE, map_location=device)
+    config = checkpoint["config"]
+
+    # keep only the arguments that ComplexTransformer’s __init__ expects
+    ctor_keys = inspect.signature(models.ComplexTransformer).parameters
+    ctor_cfg = {k: v for k, v in config.items() if k in ctor_keys}
+
+    model = models.ComplexTransformer(**ctor_cfg)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.to(device)  # keep parameters on the same device as inputs
     model.eval()
-    mean = model_dict["mean"]
-    std = model_dict["std"]
-    return model, mean, std
+    return model
 
 
-def preprocess_image(image_data, mean, std):
+def preprocess_image(image_data):
+    """Preprocess one 280×280 canvas → (1, 28, 28) normalised tensor."""
     image = Image.fromarray(image_data).convert("L")
 
+    # tight crop around the drawing
     bbox = image.getbbox()
     if bbox:
         image = image.crop(bbox)
 
-        # Make sure the image is square and centred
-        w, h = image.size
-        desired_size = max(w, h) + 40
-        pad_left = (desired_size - w) // 2
-        pad_top = (desired_size - h) // 2
-        pad_right = desired_size - w - pad_left
-        pad_bottom = desired_size - h - pad_top
+    # centre‑pad to square then resize to 28×28
+    w, h = image.size
+    side = max(w, h) + 40
+    pad = (
+        (side - w) // 2,
+        (side - h) // 2,
+        side - w - (side - w) // 2,
+        side - h - (side - h) // 2,
+    )
+    image = ImageOps.expand(image, border=pad, fill=0)
 
-        image = ImageOps.expand(
-            image, border=(pad_left, pad_top, pad_right, pad_bottom), fill=0
-        )
-
-    transform = transforms.Compose(
+    tfm = transforms.Compose(
         [
-            # Make the image more like the training data
-            # 28x28
             transforms.Resize((28, 28)),
-            # crisp lines
             transforms.Lambda(
                 lambda img: img.point(lambda p: 255 if p > 50 else 0, "L")
             ),
-            # anti-aliased
             transforms.GaussianBlur(kernel_size=3, sigma=0.5),
             transforms.ToTensor(),
-            transforms.Normalize((mean,), (std,)),
+            transforms.Normalize((0.1307,), (0.3081,)),
         ]
     )
+    return tfm(image).squeeze(0)  # (28, 28)
 
-    return transform(image).unsqueeze(0)
+
+def assemble_composite(tl, tr, bl, br):
+    """Stack four (28,28) tensors into one (1,56,56) composite."""
+    composite = torch.zeros(56, 56)
+    composite[:28, :28] = tl
+    composite[:28, 28:] = tr
+    composite[28:, :28] = bl
+    composite[28:, 28:] = br
+    return composite.unsqueeze(0).unsqueeze(0)  # (1,1,56,56)
 
 
 def random_string():
@@ -76,26 +90,13 @@ This is a demonstration app showing simple handwriting recognition.
 This app uses a deep-learning model trained on the MNIST public dataset of 
 handwritten digits using the Pytorch library.
 
-Draw a digit (0-9) in the black box and press Predict. The model will then 
-attempt to guess what digit you have entered, and how confident it is in that
-guess as a percentage. You can then press Submit to add each guess to the 
-prediction history below."""
+Draw digits (0-9) in the black boxes and press Predict. The model will then 
+attempt to guess what digits you have entered, and how confident it is in that
+guess as a percentage."""
 
 
-def main():
-    if "prediction" not in st.session_state:
-        st.session_state.prediction = None
-    if "confidence" not in st.session_state:
-        st.session_state.confidence = None
-    if "has_prediction" not in st.session_state:
-        st.session_state.has_prediction = False
-    if "canvas_key" not in st.session_state:
-        st.session_state.canvas_key = random_string()
-
-    st.title("Digit Recogniser")
-    st.markdown(INTRO)
-
-    canvas = st_canvas(
+def make_canvas(key_index):
+    return st_canvas(
         fill_color="black",
         stroke_width=15,
         stroke_color="white",
@@ -103,27 +104,75 @@ def main():
         width=280,
         height=280,
         drawing_mode="freedraw",
-        key=st.session_state.canvas_key,
+        key=st.session_state.canvas_keys[key_index],
     )
 
-    model, mean, std = load_model()
 
-    if st.button("Predict", type="primary") and canvas.image_data is not None:
-        image_tensor = preprocess_image(canvas.image_data, mean, std)
-        with torch.no_grad():
-            outputs = model(image_tensor)
-            scaled_outputs = outputs / TEMPERATURE
-            probabilities = torch.nn.functional.softmax(scaled_outputs, dim=1)[0]
-            prediction = torch.argmax(probabilities).item()
-            confidence = probabilities[prediction].item() * 100
+def main():
+    if "prediction" not in st.session_state:
+        st.session_state.prediction = None
+    if "has_prediction" not in st.session_state:
+        st.session_state.has_prediction = False
+    if "canvas_keys" not in st.session_state:
+        st.session_state.canvas_keys = [
+            random_string(),
+            random_string(),
+            random_string(),
+            random_string(),
+        ]
 
-        st.session_state.prediction = prediction
-        st.session_state.confidence = confidence
-        st.session_state.has_prediction = True
+    st.title("Digit Recogniser")
+    st.markdown(INTRO)
+
+    left, right = st.columns(2)
+    with left:
+        canvasTL = make_canvas(0)
+        canvasBL = make_canvas(2)
+    with right:
+        canvasTR = make_canvas(1)
+        canvasBR = make_canvas(3)
+
+    model = load_model()
+
+    if st.button("Predict", type="primary"):
+        if not all(
+            [c.image_data is not None for c in (canvasTL, canvasTR, canvasBL, canvasBR)]
+        ):
+            st.error("Please draw a digit in **all four** squares before predicting.")
+        else:
+            tl = preprocess_image(canvasTL.image_data)
+            tr = preprocess_image(canvasTR.image_data)
+            bl = preprocess_image(canvasBL.image_data)
+            br = preprocess_image(canvasBR.image_data)
+
+            composite = assemble_composite(tl, tr, bl, br).to(device)
+
+            with torch.no_grad():
+                # greedy autoregressive decode ─ up to 4 digits or <END>
+                input_seq = torch.full(
+                    (1, 5), PAD_TOKEN, device=device, dtype=torch.long
+                )
+                input_seq[0, 0] = START_TOKEN
+                tokens = []
+                for pos in range(4):  # max 4 digits
+                    logits = model(composite, input_seq)  # (1, 5, vocab)
+                    next_pos = (
+                        (input_seq[0] == PAD_TOKEN).nonzero(as_tuple=False)[0].item()
+                    )
+                    next_token = logits.argmax(-1)[
+                        0, next_pos
+                    ].item()  # token at current position
+                    if next_token == END_TOKEN:
+                        break
+                    tokens.append(next_token)
+                    input_seq[0, next_pos] = next_token  # feed it back
+
+                st.session_state.prediction = tokens
+            st.session_state.has_prediction = True
 
     if st.session_state.has_prediction:
-        st.write(f"**Prediction:** {st.session_state.prediction}")
-        st.write(f"**Confidence:** {st.session_state.confidence:.1f}%")
+        pred_str = " ".join(str(d) for d in st.session_state.prediction)
+        st.write(f"**Predicted digits (TL→TR→BL→BR):** {pred_str}")
 
 
 if __name__ == "__main__":

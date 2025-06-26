@@ -2,10 +2,15 @@
 Hyperparameter Hippies MNIST project
 
 
-## Tyrone and Ben's implementation
+## Tyrone and Dan's implementation
 
 ```
-uv run train_model.py
+# on local machine
+./send.sh
+# on Nvidia machine
+./ssh.sh
+uv run train_model.py # encoder-only
+uv run train_complex_model.py # encoder-decoder
 ```
 
 Data will be placed in the `data` directory.
@@ -13,6 +18,5 @@ Data will be placed in the `data` directory.
 To run the webserver:
 
 ```
-uv sync
-uv run -- streamlit run webserver.py
+uv run --group inference -- streamlit run webserver.py
 ```
