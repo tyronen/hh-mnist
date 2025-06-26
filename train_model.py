@@ -15,13 +15,13 @@ from tqdm import tqdm
 from models import VitTransformer
 import utils
 
-# config given here represents approximate best run, according to sweeps/experiments (should achieve 99% test acc)
-# NB. a similar result was achieved with a 32 epoch run on 1024 ffn dims, 32 heads, patch size of 7 and weight decay of 1e-2 (see sweep 9wmxmvo1)
+# config given here represents approximate best run, according to sweep experiments (should achieve 99% test acc)
+# NB. a similar 99% result was achieved with 32 epochs on: ffn_dims=1024, num_heads=32, patch_size=7, weight_decay=1e-2 (see sweeps/9wmxmvo1.csv)
 hyperparameters = {
     "batch_size": 2048,
     "learning_rate": 5e-4,
     "epochs": 25,
-    "patience": 2,
+    "patience": 3,
     "patch_size": 14,  # base MNIST images are 28x28, so patch size of 7 -> 16 patches (or 14 -> 4 patches)
     "model_dim": 256,
     "ffn_dim": 2048,
@@ -37,16 +37,16 @@ sweep_config = {
     "metric": {"name": "test_accuracy", "goal": "maximize"},
     "parameters": {
         "batch_size": {"values": [2048]},
-        "learning_rate": {"values": [1e-4, 5e-4]},
-        "epochs": {"values": [25, 32, 40]},
-        "patience": {"values": [2]},
+        "learning_rate": {"values": [5e-4]},
+        "epochs": {"values": [25, 32, 45, 64, 95]},
+        "patience": {"values": [-1]},
         "patch_size": {"values": [7, 14]},
-        "model_dim": {"values": [256, 512, 1024]},
-        "ffn_dim": {"values": [1024, 2048, 4096]},
-        "num_encoders": {"values": [5, 6, 7]},
+        "model_dim": {"values": [256, 512]},
+        "ffn_dim": {"values": [1024, 2048]},
+        "num_encoders": {"values": [5, 6]},
         "num_heads": {"values": [32, 64]},
         "dropout": {"values": [0.15]},
-        "weight_decay": {"values": [0, 1e-4, 1e-3, 1e-2]},
+        "weight_decay": {"values": [1e-4]},
     },
 }
 
