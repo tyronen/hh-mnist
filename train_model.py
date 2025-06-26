@@ -28,23 +28,24 @@ hyperparameters = {
     "num_heads": 32,
     "seed": 42,
     "dropout": 0.15,
+    "weight_decay": 0,
 }
 
 sweep_config = {
-    "method": "grid",  # Can be 'grid', 'random', or 'bayes'
+    "method": "bayes",  # can be 'grid', 'random', or 'bayes'
     "metric": {"name": "test_accuracy", "goal": "maximize"},
     "parameters": {
-        "batch_size": {"values": [2048]},
-        "learning_rate": {"values": [1e-4]},
-        "epochs": {"values": [32]},
+        "batch_size": {"values": [2048, 4096]},
+        "learning_rate": {"values": [1e-4, 5e-4]},
+        "epochs": {"values": [32, 42]},
         "patience": {"values": [2]},
-        "patch_size": {"values": [14]},
-        "model_dim": {"values": [512]},
-        "ffn_dim": {"values": [2048]},
-        "num_encoders": {"values": [5]},
-        "num_heads": {"values": [32]},
+        "patch_size": {"values": [7, 14]},
+        "model_dim": {"values": [256, 512, 1024]},
+        "ffn_dim": {"values": [1024, 2048, 4096]},
+        "num_encoders": {"values": [5, 6, 7]},
+        "num_heads": {"values": [32, 64]},
         "dropout": {"values": [0.15]},
-        "use_adamw": {"values": [True, False]},
+        "weight_decay": {"values": [0, 1e-4, 1e-3, 1e-2]},
     },
 }
 
@@ -178,18 +179,9 @@ def run_single_training(config=None):
     model.to(device)
 
     loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
-    if config["use_adamw"]:
-        optimizer = optim.AdamW(
-            model.parameters(),
-            lr=config["learning_rate"],
-            weight_decay=0,
-        )
-    else:
-        config["weight_decay"] = 0
-        optimizer = optim.Adam(
-            model.parameters(),
-            lr=config["learning_rate"],
-        )
+    optimizer = optim.AdamW(
+        model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"]
+    )
 
     wandb.watch(model, log="all", log_freq=100)
     wandb.define_metric("val_accuracy", summary="max")
@@ -330,7 +322,7 @@ def run_sweep():
         sweep_id=sweep_id,
         function=sweep_train,
         project=args.project,
-        count=36,
+        count=50,
     )
 
 
