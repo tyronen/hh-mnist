@@ -40,9 +40,9 @@ sweep_config = {
         "patience": {"values": [2]},
         "patch_size": {"values": [14]},
         "model_dim": {"values": [512]},
-        "ffn_dim": {"values": [2048, 4096]},
-        "num_encoders": {"values": [4, 5, 6]},
-        "num_heads": {"values": [16, 32, 64]},
+        "ffn_dim": {"values": [2048]},
+        "num_encoders": {"values": [5, 6]},
+        "num_heads": {"values": [32, 64]},
         "train_pe": {"values": [True, False]},
     },
 }
