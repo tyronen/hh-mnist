@@ -40,17 +40,21 @@ class PositionalEncoding(nn.Module):
 
 class Patchify(nn.Module):
     # think of each patch as an image token (i.e. as a word, if this was NLP)
-    def __init__(self, patch_size: int, model_dim: int):
+    def __init__(self, patch_size: int, model_dim: int, use_patch_norm: bool = True):
         super().__init__()
         # use conv2d to unfold each image into patches (more efficient on GPU)
         self.proj = nn.Conv2d(1, model_dim, kernel_size=patch_size, stride=patch_size)
-        # normalise patch embeddings before they enter the transformer proper
-        self.norm = nn.LayerNorm(model_dim)
+        # optionally normalise patch embeddings before they enter the transformer proper
+        self.use_patch_norm = use_patch_norm
+        if use_patch_norm:
+            self.norm = nn.LayerNorm(model_dim)
 
     def forward(self, x):
         x = self.proj(x).flatten(2)
         x = x.permute(0, 2, 1)
-        return self.norm(x)
+        if self.use_patch_norm:
+            return self.norm(x)
+        return x
 
 
 def attention(k_dim, q, k, v, mask_tensor):
@@ -125,11 +129,12 @@ class CrossAttention(nn.Module):
 
 
 class FeedForward(nn.Module):
-    def __init__(self, model_dim: int, ffn_dim: int):
+    def __init__(self, model_dim: int, ffn_dim: int, dropout: float = 0.1):
         super().__init__()
         self.sequence = nn.Sequential(
             nn.Linear(model_dim, ffn_dim, bias=True),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(ffn_dim, model_dim, bias=True),
         )
 
@@ -143,12 +148,15 @@ class Encoder(nn.Module):
         model_dim: int,
         ffn_dim: int,
         num_heads: int,
+        dropout: float = 0.1,
     ):
         super().__init__()
         # here, 'multi-head dot-product self attention blocks [...] completely replace convolutions' (see 16x16)
-        self.mha = SelfAttention(model_dim=model_dim, num_heads=num_heads, mask=False)
+        self.mha = SelfAttention(
+            model_dim=model_dim, num_heads=num_heads, mask=False, dropout=dropout
+        )
         self.norm1 = nn.LayerNorm(model_dim)
-        self.ffn = FeedForward(model_dim, ffn_dim)
+        self.ffn = FeedForward(model_dim, ffn_dim, dropout=dropout)
         self.norm2 = nn.LayerNorm(model_dim)
 
     def forward(self, x):
@@ -188,16 +196,20 @@ class BaseTransformer(nn.Module):
         num_heads: int,
         num_encoders: int,
         use_cls: bool,
+        dropout: float = 0.1,
         train_pe: bool = False,
+        use_patch_norm: bool = True,
     ):
         super().__init__()
-        self.patchify = Patchify(patch_size, model_dim)
+        self.patchify = Patchify(patch_size, model_dim, use_patch_norm=use_patch_norm)
         self.use_cls = use_cls
         self.pe = PositionalEncoding(model_dim, trainable=train_pe)
         self.cls_token = nn.Parameter(torch.randn(1, 1, model_dim))
 
         def make_encoder() -> nn.Module:
-            return Encoder(model_dim=model_dim, num_heads=num_heads, ffn_dim=ffn_dim)
+            return Encoder(
+                model_dim=model_dim, num_heads=num_heads, ffn_dim=ffn_dim, dropout=dropout
+            )
 
         self.encoder_series = nn.ModuleList([make_encoder() for _ in range(num_encoders)])
 
@@ -224,6 +236,7 @@ class VitTransformer(nn.Module):
         num_encoders: int,
         train_pe: bool = False,
         dropout: float = 0.1,
+        use_patch_norm: bool = True,
     ):
         super().__init__()
         self.base_transformer = BaseTransformer(
@@ -234,6 +247,8 @@ class VitTransformer(nn.Module):
             num_encoders=num_encoders,
             use_cls=True,
             train_pe=train_pe,
+            dropout=dropout,
+            use_patch_norm=use_patch_norm,
         )
         self.mlp = nn.Sequential(
             nn.LayerNorm(model_dim),

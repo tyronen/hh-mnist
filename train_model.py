@@ -15,19 +15,21 @@ from tqdm import tqdm
 from models import VitTransformer
 import utils
 
-# TODO: expose dropout and label smoothing as hyperparameters
+# config given here represents (approx.) best run so far
 hyperparameters = {
-    "batch_size": 1024,
-    "learning_rate": 0.001,
-    "epochs": 20,
+    "batch_size": 2048,
+    "learning_rate": 0.0001,
+    "epochs": 32,
     "patience": 2,
     "patch_size": 14,  # base MNIST images are 28x28, so patch size of 7 -> 16 patches (or 14 -> 4 patches)
-    "model_dim": 128,
-    "ffn_dim": 64,
-    "num_encoders": 3,
-    "num_heads": 4,
+    "model_dim": 512,
+    "ffn_dim": 2048,
+    "num_encoders": 5,
+    "num_heads": 32,
     "seed": 42,
-    "train_pe": False,
+    "dropout": 0.1,
+    "train_pe": True,
+    "use_patch_norm": True,
 }
 
 sweep_config = {
@@ -41,9 +43,11 @@ sweep_config = {
         "patch_size": {"values": [14]},
         "model_dim": {"values": [512]},
         "ffn_dim": {"values": [2048]},
-        "num_encoders": {"values": [5, 6]},
-        "num_heads": {"values": [32, 64]},
+        "num_encoders": {"values": [5]},
+        "num_heads": {"values": [32]},
+        "dropout": {"values": [0.05, 0.1, 0.15, 0.2]},
         "train_pe": {"values": [True, False]},
+        "use_patch_norm": {"values": [True, False]},
     },
 }
 
@@ -172,7 +176,9 @@ def run_single_training(config=None):
         ffn_dim=config["ffn_dim"],
         num_encoders=config["num_encoders"],
         num_heads=config["num_heads"],
+        dropout=config["dropout"],
         train_pe=config["train_pe"],
+        use_patch_norm=config["use_patch_norm"],
     )
     model.to(device)
 
