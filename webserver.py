@@ -65,11 +65,6 @@ def preprocess_image(image_data):
     return tfm(image).squeeze(0)  # (28, 28)
 
 
-TEMPERATURE = 2.0
-
-# normalised value of a pure-black pixel after (0.1307, 0.3081) normalisation
-BLACK_BG = (-0.1307) / 0.3081  # ≈ -0.4248
-
 INTRO = """
 This is a demonstration app showing simple handwriting recognition.
 
@@ -77,13 +72,12 @@ This app uses a deep-learning model trained on the MNIST public dataset of
 handwritten digits using the Pytorch library.
 
 Draw digits (0-9) in the black boxes and press Predict. The model will then 
-attempt to guess what digits you have entered, and how confident it is in that
-guess as a percentage."""
+attempt to guess what digits you have entered."""
 
 
 def assemble_composite(tl, tr, bl, br):
     """Stack four (28,28) tensors into one (1,56,56) composite."""
-    composite = torch.full((56, 56), BLACK_BG)
+    composite = torch.zeros(56, 56)
     composite[:28, :28] = tl
     composite[:28, 28:] = tr
     composite[28:, :28] = bl
