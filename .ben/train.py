@@ -19,7 +19,8 @@ hyperparameters = {
     "patch_stride": 14,
     "dim_model": 64,
     "dim_k": 64,
-    "dim_v": 64
+    "dim_v": 64,
+    "has_positional_encoding": True
 }
 
 def train(model, dataloader, loss_function, optimizer, device, epoch_num):
@@ -68,7 +69,8 @@ def main():
         stride=hyperparameters["patch_stride"],
         dim_model=hyperparameters["dim_model"],
         dim_k=hyperparameters["dim_k"],
-        dim_v=hyperparameters["dim_v"]
+        dim_v=hyperparameters["dim_v"],
+        has_positional_encoding=hyperparameters["has_positional_encoding"]
     )
 
     loss_function = nn.CrossEntropyLoss()
@@ -95,6 +97,7 @@ def main():
                 "dim_k": hyperparameters["dim_k"],
                 "dim_v": hyperparameters["dim_v"],
                 "timestamp": datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+                "has_positional_encoding": hyperparameters["has_positional_encoding"],
                 "score": correct_rate
             }
             i = 1
