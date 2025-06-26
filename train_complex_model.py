@@ -4,6 +4,7 @@ from typing import Optional
 import torch
 from torch import nn, optim
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import ReduceLROnPlateau, LRScheduler
 from torch.utils.data import DataLoader, TensorDataset
 import logging
 
@@ -16,7 +17,7 @@ import wandb
 
 hyperparameters = {
     "batch_size": 256,
-    "learning_rate": 0.001,
+    "learning_rate": 3e-4,
     "epochs": 20,
     "patience": 2,
     "patch_size": 14,
@@ -90,15 +91,6 @@ def run_batch(
                 batch_seq_size = output_seqs.size(0)
                 seq_correct += batch_seq_correct
                 seq_total += batch_seq_size
-                wandb.log(
-                    {
-                        "batch_loss": loss.item(),
-                        "batch_non_padded_tokens": batch_tokens,
-                        "batch_digits_correct": batch_num_correct_digits,
-                        "batch_seq_correct": batch_seq_correct,
-                        "batch_seq_size": batch_seq_size,
-                    }
-                )
 
             if train:
                 if optimizer is None:
@@ -126,15 +118,6 @@ def run_batch(
     return token_accuracy, seq_accuracy, avg_loss
 
 
-# true and true = true
-# true and false = false
-# false and false = false
-
-# true or not-true = true
-# true or not-true = false
-# false or not-false = true
-
-
 def run_single_training(config=None):
     """Run a single training session with given config."""
     if config is None:
@@ -156,7 +139,7 @@ def run_single_training(config=None):
         num_coders=hyperparameters["num_coders"],
         num_heads=hyperparameters["num_heads"],
     ).to(device)
-    loss_fn = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
+    loss_fn = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN, label_smoothing=0.1)
     optimizer = optim.Adam(model.parameters(), lr=hyperparameters["learning_rate"])
 
     model = run_training(
@@ -222,6 +205,9 @@ def run_training(
     wandb.define_metric("val_loss", summary="min")
     best_loss = float("inf")
     epochs_since_best = 0
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", patience=2, factor=0.5
+    )
     for epoch in range(config["epochs"]):
         train_token_accuracy, train_seq_accuracy, train_loss = run_batch(
             dataloader=train_dl,
@@ -250,6 +236,7 @@ def run_training(
                 "val_loss": val_loss,
             },
         )
+        scheduler.step(val_loss)
         if val_loss < best_loss:
             best_loss = val_loss
             epochs_since_best = 0
