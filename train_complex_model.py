@@ -15,13 +15,13 @@ from models import ComplexTransformer
 import wandb
 
 hyperparameters = {
-    "batch_size": 1024,
+    "batch_size": 256,
     "learning_rate": 0.001,
     "epochs": 20,
     "patience": 2,
     "patch_size": 14,
-    "model_dim": 64,
-    "ffn_dim": 512,
+    "model_dim": 256,
+    "ffn_dim": 1024,
     "num_coders": 6,
     "num_heads": 8,
     "seed": 42,
@@ -56,9 +56,9 @@ def run_batch(
 ):
     model.train() if train else model.eval()
 
-    size = 0
+    total_tokens = 0
     num_batches = len(dataloader)
-    total_loss, correct = 0.0, 0
+    total_loss, num_correct_digits = 0.0, 0
     seq_total, seq_correct = 0, 0
     iterator = tqdm(dataloader, desc=desc)
     context = torch.enable_grad() if train else torch.no_grad()
@@ -80,10 +80,10 @@ def run_batch(
                 total_loss += loss
                 mask = (output_seqs != PAD_TOKEN) & (output_seqs != END_TOKEN)
                 pred = logits.argmax(-1)
-                batch_correct = ((pred == output_seqs) & mask).sum().item()
-                correct += batch_correct
-                batch_size = mask.sum().item()
-                size += batch_size
+                batch_num_correct_digits = ((pred == output_seqs) & mask).sum().item()
+                num_correct_digits += batch_num_correct_digits
+                batch_tokens = mask.sum().item()
+                total_tokens += batch_tokens
                 batch_seq_correct = (
                     ((pred == output_seqs) | ~mask).all(dim=1).sum().item()
                 )
@@ -93,8 +93,8 @@ def run_batch(
                 wandb.log(
                     {
                         "batch_loss": loss.item(),
-                        "batch_non_padded_tokens": batch_size,
-                        "batch_predictions_correct": batch_correct,
+                        "batch_non_padded_tokens": batch_tokens,
+                        "batch_digits_correct": batch_num_correct_digits,
                         "batch_seq_correct": batch_seq_correct,
                         "batch_seq_size": batch_seq_size,
                     }
@@ -111,21 +111,28 @@ def run_batch(
                 optimizer.zero_grad()
 
     avg_loss = total_loss / num_batches
-    accuracy = 100 * correct / size
-    seq_accuracy = 100 * seq_correct / seq_total
     wandb.log(
         {
             "total_loss": total_loss,
             "num_batches": num_batches,
-            "correct": correct,
-            "size": size,
-            "accuracy": accuracy,
-            "seq_accuracy": seq_accuracy,
+            "digits_correct": num_correct_digits,
+            "total_tokens": total_tokens,
             "seq_total": seq_total,
             "seq_correct": seq_correct,
         }
     )
-    return seq_accuracy, avg_loss
+    token_accuracy = 100 * num_correct_digits / total_tokens
+    seq_accuracy = 100 * seq_correct / seq_total
+    return token_accuracy, seq_accuracy, avg_loss
+
+
+# true and true = true
+# true and false = false
+# false and false = false
+
+# true or not-true = true
+# true or not-true = false
+# false or not-false = true
 
 
 def run_single_training(config=None):
@@ -166,7 +173,7 @@ def run_single_training(config=None):
     checkpoint = torch.load(utils.COMPLEX_MODEL_FILE)
     model.load_state_dict(checkpoint["model_state_dict"])
 
-    test_correct, test_loss = run_batch(
+    test_token_accuracy, test_seq_accuracy, test_loss = run_batch(
         dataloader=test_dataloader,
         model=model,
         device=device,
@@ -174,8 +181,13 @@ def run_single_training(config=None):
         train=False,
         desc="Testing",
     )
-    wandb.log({"test_accuracy": test_correct, "test_loss": test_loss})
-    logging.info(f"Test accuracy: {test_correct:.2f}%")
+    wandb.log(
+        {
+            "test_token_accuracy": test_token_accuracy,
+            "test_seq_accuracy": test_seq_accuracy,
+            "test_loss": test_loss,
+        }
+    )
 
     return model
 
@@ -205,12 +217,13 @@ def run_training(
     config: dict,
 ) -> nn.Module:
     wandb.watch(model, log="all", log_freq=100)
-    wandb.define_metric("val_accuracy", summary="max")
+    wandb.define_metric("val_token_accuracy", summary="max")
+    wandb.define_metric("val_seq_accuracy", summary="max")
     wandb.define_metric("val_loss", summary="min")
     best_loss = float("inf")
     epochs_since_best = 0
     for epoch in range(config["epochs"]):
-        train_correct, train_loss = run_batch(
+        train_token_accuracy, train_seq_accuracy, train_loss = run_batch(
             dataloader=train_dl,
             model=model,
             device=device,
@@ -219,7 +232,7 @@ def run_training(
             optimizer=optimizer,
             desc=f"Training epoch {epoch + 1}",
         )
-        val_correct, val_loss = run_batch(
+        val_token_accuracy, val_seq_accuracy, val_loss = run_batch(
             dataloader=val_dl,
             model=model,
             device=device,
@@ -229,9 +242,11 @@ def run_training(
         )
         wandb.log(
             {
-                "train_accuracy": train_correct,
+                "train_token_accuracy": train_token_accuracy,
+                "train_seq_accuracy": train_seq_accuracy,
                 "train_loss": train_loss,
-                "val_accuracy": val_correct,
+                "val_token_accuracy": val_token_accuracy,
+                "val_seq_accuracy": val_seq_accuracy,
                 "val_loss": val_loss,
             },
         )

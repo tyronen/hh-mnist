@@ -23,7 +23,9 @@ class PositionalEncoding(nn.Module):
             # Fixed sinusoidal positional encoding (original implementation)
             pe = torch.zeros(max_len, model_dim)
             position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-            div_term = torch.exp(torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim))
+            div_term = torch.exp(
+                torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim)
+            )
             broadcast = position * div_term
             pe[:, 0::2] = torch.sin(broadcast)
             pe[:, 1::2] = torch.cos(broadcast)
@@ -80,7 +82,9 @@ class SelfAttention(nn.Module):
         vh = self.rearrange(v, B, L)
         mask_tensor = None
         if self.mask:
-            mask_tensor = torch.triu(torch.ones(L, L, device=x.device), diagonal=1).bool()
+            mask_tensor = torch.triu(
+                torch.ones(L, L, device=x.device), diagonal=1
+            ).bool()
 
         attended = attention(self.k_dim, qh, kh, vh, mask_tensor=mask_tensor)
         concatted = attended.transpose(1, 2).reshape(B, L, self.model_dim)
@@ -154,7 +158,9 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, model_dim: int, ffn_dim: int, num_heads: int):
         super().__init__()
-        self.masked_self_mha = SelfAttention(model_dim=model_dim, num_heads=num_heads, mask=True)
+        self.masked_self_mha = SelfAttention(
+            model_dim=model_dim, num_heads=num_heads, mask=True
+        )
         self.norm1 = nn.LayerNorm(model_dim)
         self.cross_mha = CrossAttention(model_dim=model_dim, num_heads=num_heads)
         self.norm2 = nn.LayerNorm(model_dim)
@@ -190,7 +196,9 @@ class BaseTransformer(nn.Module):
         def make_encoder() -> nn.Module:
             return Encoder(model_dim=model_dim, num_heads=num_heads, ffn_dim=ffn_dim)
 
-        self.encoder_series = nn.ModuleList([make_encoder() for _ in range(num_encoders)])
+        self.encoder_series = nn.ModuleList(
+            [make_encoder() for _ in range(num_encoders)]
+        )
 
     def forward(self, x):
         B = x.size(0)
@@ -259,7 +267,8 @@ class ComplexTransformer(nn.Module):
         self.embedding = nn.Embedding(
             num_embeddings=VOCAB_SIZE, embedding_dim=model_dim
         )
-        self.pe = PositionalEncoding(model_dim=model_dim)
+        self.pe = torch.nn.Embedding(5, model_dim)
+        self.register_buffer("rng", torch.arange(5))
 
         def make_decoder() -> nn.Module:
             return Decoder(model_dim=model_dim, ffn_dim=ffn_dim, num_heads=num_heads)
@@ -271,7 +280,8 @@ class ComplexTransformer(nn.Module):
     def forward(self, images, input_seqs):
         encoded = self.base_transformer(images)
         text = self.embedding(input_seqs)
-        text = self.pe(text)
+        # for this to work, text length must always be 5!
+        text = text + self.pe(self.rng)
         for decoder in self.decoder_series:
             text = decoder(encoded, text)
         return self.linear(text)

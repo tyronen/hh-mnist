@@ -19,11 +19,12 @@ def create_composite_image(mnist_images, mnist_labels, num_images):
     composite = torch.zeros(1, 56, 56)
     labels = []
 
-    # Define the 4 quadrant positions (top-left corners)
+    # Define the 4 quadrant positions - top left, top right, bottom left, bottom right
     positions = [(0, 0), (0, 28), (28, 0), (28, 28)]
 
     # Randomly select which positions to fill
-    selected_positions = random.sample(positions, num_images)
+    positions_to_fill = sorted(random.sample(range(4), num_images))
+    selected_positions = [positions[i] for i in positions_to_fill]
 
     # Randomly select MNIST images
     indices = random.choices(range(len(mnist_images)), k=num_images)
@@ -48,7 +49,10 @@ def create_transformer_seqs(labels):
     max_seq_len = 5  # START + up to 4 labels, or up to 4 labels + END
 
     # Input sequence: [START_TOKEN, label1, label2, ..., PAD, PAD]
-    input_seq = [START_TOKEN] + labels
+    input_seq = [START_TOKEN] + labels[:-1]
+    # because we use masked self-attention, we have to drop the last digit
+    # otherwise every time-step can still see its own answer through the attention identity path
+    # and you get the copy-shortcut/100 % accuracy bug.
     while len(input_seq) < max_seq_len:
         input_seq.append(PAD_TOKEN)
 
