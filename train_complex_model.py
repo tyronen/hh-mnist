@@ -26,6 +26,7 @@ hyperparameters = {
     "num_coders": 6,
     "num_heads": 8,
     "seed": 42,
+    "dropout_rate": 0.1,
 }
 
 parser = argparse.ArgumentParser(description="Train simple model")
@@ -138,6 +139,7 @@ def run_single_training(config=None):
         ffn_dim=hyperparameters["ffn_dim"],
         num_coders=hyperparameters["num_coders"],
         num_heads=hyperparameters["num_heads"],
+        dropout_rate=hyperparameters["dropout_rate"],
     ).to(device)
     loss_fn = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN, label_smoothing=0.1)
     optimizer = optim.Adam(model.parameters(), lr=hyperparameters["learning_rate"])

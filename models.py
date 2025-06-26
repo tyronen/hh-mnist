@@ -144,7 +144,7 @@ class Encoder(nn.Module):
         model_dim: int,
         ffn_dim: int,
         num_heads: int,
-        dropout: float = 0.1,
+        dropout: float,
     ):
         super().__init__()
         # here, 'multi-head dot-product self attention blocks [...] completely replace convolutions' (see 16x16)
@@ -154,18 +154,19 @@ class Encoder(nn.Module):
         self.norm1 = nn.LayerNorm(model_dim)
         self.ffn = FeedForward(model_dim, ffn_dim, dropout=dropout)
         self.norm2 = nn.LayerNorm(model_dim)
+        self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, x):
         mhead = self.mha(x)
-        addnormed = self.norm1(x + mhead)
+        addnormed = self.norm1(x + self.dropout(mhead))
 
         # pass attention output through feed-forward sub-layer (basic MLP)
         ffned = self.ffn(addnormed)
-        return self.norm2(addnormed + ffned)
+        return self.norm2(addnormed + self.dropout(ffned))
 
 
 class Decoder(nn.Module):
-    def __init__(self, model_dim: int, ffn_dim: int, num_heads: int):
+    def __init__(self, model_dim: int, ffn_dim: int, num_heads: int, dropout_rate: float):
         super().__init__()
         self.masked_self_mha = SelfAttention(model_dim=model_dim, num_heads=num_heads, mask=True)
         self.norm1 = nn.LayerNorm(model_dim)
@@ -173,14 +174,15 @@ class Decoder(nn.Module):
         self.norm2 = nn.LayerNorm(model_dim)
         self.ffn = FeedForward(model_dim=model_dim, ffn_dim=ffn_dim)
         self.norm3 = nn.LayerNorm(model_dim)
+        self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, images, text):
         stage1 = self.masked_self_mha(text)
-        addnormed_text = self.norm1(text + stage1)
+        addnormed_text = self.norm1(text + self.dropout(stage1))
         stage2 = self.cross_mha(images, addnormed_text)
-        addnormed_stage2 = self.norm2(addnormed_text + stage2)
+        addnormed_stage2 = self.norm2(addnormed_text + self.dropout(stage2))
         ffned = self.ffn(addnormed_stage2)
-        return self.norm3(addnormed_stage2 + ffned)
+        return self.norm3(addnormed_stage2 + self.dropout(ffned))
 
 
 class BaseTransformer(nn.Module):
@@ -192,8 +194,9 @@ class BaseTransformer(nn.Module):
         num_heads: int,
         num_encoders: int,
         use_cls: bool,
-        dropout: float = 0.1,
+        dropout: float,
         use_patch_norm: bool = True,
+        train_pe: bool = False,
     ):
         super().__init__()
         self.patchify = Patchify(patch_size, model_dim)
@@ -264,6 +267,7 @@ class ComplexTransformer(nn.Module):
         ffn_dim: int,
         num_heads: int,
         num_coders: int,
+        dropout: float,
     ):
         super().__init__()
         self.base_transformer = BaseTransformer(
@@ -272,6 +276,7 @@ class ComplexTransformer(nn.Module):
             ffn_dim=ffn_dim,
             num_heads=num_heads,
             num_encoders=num_coders,
+            dropout=dropout,
             use_cls=False,
         )
         self.embedding = nn.Embedding(num_embeddings=VOCAB_SIZE, embedding_dim=model_dim)
@@ -279,7 +284,7 @@ class ComplexTransformer(nn.Module):
         self.register_buffer("rng", torch.arange(5))
 
         def make_decoder() -> nn.Module:
-            return Decoder(model_dim=model_dim, ffn_dim=ffn_dim, num_heads=num_heads)
+            return Decoder(model_dim=model_dim, ffn_dim=ffn_dim, num_heads=num_heads, dropout=dropout)
 
         self.decoder_series = nn.ModuleList([make_decoder() for _ in range(num_coders)])
 
