@@ -69,6 +69,7 @@ class Encoder(nn.Module):
             dim_model, 
             dim_k, 
             dim_v,
+            dropout_rate: float,
             has_pre_attention_norm: bool,
             has_post_attention_norm: bool,
             has_post_ffn_norm: bool):
@@ -87,6 +88,7 @@ class Encoder(nn.Module):
             self.post_ffn_norm = nn.LayerNorm(dim_model)
         else:
             self.post_ffn_norm = None
+        self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, x):
         original_x = x
@@ -96,9 +98,13 @@ class Encoder(nn.Module):
         x = x + original_x
         if self.post_attention_norm is not None:
             x = self.post_attention_norm(x)
+        x = self.dropout(x)
+        original_x = x
         x = self.feed_forward(x)
+        x = x + original_x
         if self.post_ffn_norm is not None:
             x = self.post_ffn_norm(x)
+        x = self.dropout(x)
         return x
     
 
@@ -110,6 +116,7 @@ class Classifier(nn.Module):
             dim_model: int, 
             dim_k: int, 
             dim_v,
+            dropout_rate: float,
             has_positional_encoding: bool,
             has_input_norm: bool,
             has_post_attention_norm: bool,
@@ -129,6 +136,7 @@ class Classifier(nn.Module):
                     dim_model=dim_model, 
                     dim_k=dim_k, 
                     dim_v=dim_v,
+                    dropout_rate=dropout_rate,
                     has_pre_attention_norm=has_pre_attention_norm,
                     has_post_attention_norm=has_post_attention_norm,
                     has_post_ffn_norm=has_post_ffn_norm

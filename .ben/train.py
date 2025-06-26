@@ -20,6 +20,7 @@ hyperparameters = {
     "dim_model": 64,
     "dim_k": 64,
     "dim_v": 64,
+    "dropout_rate": 0.1,
     "num_encoders": 6,
     "has_positional_encoding": True,
     #noralization
@@ -27,7 +28,7 @@ hyperparameters = {
     "has_pre_attention_norm": True,
     "has_post_attention_norm": True,
     "has_post_ffn_norm": True,
-    "has_final_norm": False
+    "has_final_norm": False,
 }
 
 # normalization_layer_1: After patch projection
@@ -84,6 +85,7 @@ def main():
         dim_model=hyperparameters["dim_model"],
         dim_k=hyperparameters["dim_k"],
         dim_v=hyperparameters["dim_v"],
+        dropout_rate=hyperparameters["dropout_rate"],
         has_positional_encoding=hyperparameters["has_positional_encoding"],
         has_input_norm=hyperparameters["has_input_norm"],
         has_post_attention_norm=hyperparameters["has_post_attention_norm"],
@@ -118,6 +120,7 @@ def main():
                 "dim_model": hyperparameters["dim_model"],
                 "dim_k": hyperparameters["dim_k"],
                 "dim_v": hyperparameters["dim_v"],
+                "dropout_rate": hyperparameters["dropout_rate"],
                 "timestamp": datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
                 "has_positional_encoding": hyperparameters["has_positional_encoding"],
                 "has_input_norm": hyperparameters["has_input_norm"],
