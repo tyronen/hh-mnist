@@ -119,6 +119,11 @@ def main():
                 "dim_v": hyperparameters["dim_v"],
                 "timestamp": datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
                 "has_positional_encoding": hyperparameters["has_positional_encoding"],
+                "has_normalization_layer_1": hyperparameters["has_normalization_layer_1"],
+                "has_normalization_layer_2": hyperparameters["has_normalization_layer_2"],
+                "has_normalization_layer_3": hyperparameters["has_normalization_layer_3"],
+                "has_normalization_layer_4": hyperparameters["has_normalization_layer_4"],
+                "has_normalization_layer_5": hyperparameters["has_normalization_layer_5"],
                 "num_encoders": hyperparameters["num_encoders"],
                 "score": correct_rate
             }
