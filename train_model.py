@@ -28,7 +28,6 @@ hyperparameters = {
     "num_heads": 32,
     "seed": 42,
     "dropout": 0.15,
-    "weight_decay": 0.01,
 }
 
 sweep_config = {
@@ -45,7 +44,7 @@ sweep_config = {
         "num_encoders": {"values": [5]},
         "num_heads": {"values": [32]},
         "dropout": {"values": [0.15]},
-        "weight_decay": {"values": [0.0, 0.01, 0.05, 0.1]},
+        "use_adamw": {"values": [True, False]},
     },
 }
 
@@ -179,9 +178,18 @@ def run_single_training(config=None):
     model.to(device)
 
     loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
-    optimizer = optim.AdamW(
-        model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"]
-    )
+    if config["use_adamw"]:
+        optimizer = optim.AdamW(
+            model.parameters(),
+            lr=config["learning_rate"],
+            weight_decay=0,
+        )
+    else:
+        config["weight_decay"] = 0
+        optimizer = optim.Adam(
+            model.parameters(),
+            lr=config["learning_rate"],
+        )
 
     wandb.watch(model, log="all", log_freq=100)
     wandb.define_metric("val_accuracy", summary="max")
