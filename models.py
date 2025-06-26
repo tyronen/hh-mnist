@@ -154,7 +154,7 @@ class Encoder(nn.Module):
         self.norm1 = nn.LayerNorm(model_dim)
         self.ffn = FeedForward(model_dim, ffn_dim, dropout=dropout)
         self.norm2 = nn.LayerNorm(model_dim)
-        self.dropout = nn.Dropout(dropout_rate)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         mhead = self.mha(x)
@@ -166,7 +166,7 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, model_dim: int, ffn_dim: int, num_heads: int, dropout_rate: float):
+    def __init__(self, model_dim: int, ffn_dim: int, num_heads: int, dropout: float):
         super().__init__()
         self.masked_self_mha = SelfAttention(model_dim=model_dim, num_heads=num_heads, mask=True)
         self.norm1 = nn.LayerNorm(model_dim)
@@ -174,7 +174,7 @@ class Decoder(nn.Module):
         self.norm2 = nn.LayerNorm(model_dim)
         self.ffn = FeedForward(model_dim=model_dim, ffn_dim=ffn_dim)
         self.norm3 = nn.LayerNorm(model_dim)
-        self.dropout = nn.Dropout(dropout_rate)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, images, text):
         stage1 = self.masked_self_mha(text)
@@ -286,7 +286,9 @@ class ComplexTransformer(nn.Module):
         self.register_buffer("rng", torch.arange(5))
 
         def make_decoder() -> nn.Module:
-            return Decoder(model_dim=model_dim, ffn_dim=ffn_dim, num_heads=num_heads, dropout=dropout)
+            return Decoder(
+                model_dim=model_dim, ffn_dim=ffn_dim, num_heads=num_heads, dropout=dropout
+            )
 
         self.decoder_series = nn.ModuleList([make_decoder() for _ in range(num_coders)])
 
