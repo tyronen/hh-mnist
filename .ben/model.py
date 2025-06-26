@@ -25,30 +25,16 @@ class PatchProjection(nn.Module):
         patches = patches.transpose(-2, -1)     # (batch_size, num_patches, patch_size * patch_size)
         x = self.linear(patches)                # (batch_size, num_patches, dim_model)
         return x
-    
-class Encoder(nn.Module):
-    def __init__(
-            self, 
-            dim_model, 
-            dim_k, 
-            dim_v,
-            has_normalization_layer_2: bool,
-            has_normalization_layer_3: bool):
+
+class Attention(nn.Module):
+    def __init__(self, dim_model, dim_k, dim_v):
         super().__init__()
         self.dk = dim_k
         self.wq = nn.Linear(dim_model, dim_k, bias=False)
         self.wk = nn.Linear(dim_model, dim_k, bias=False)
         self.wv = nn.Linear(dim_model, dim_v, bias=False)
         self.w_o = nn.Linear(dim_v, dim_model, bias=False)
-        if has_normalization_layer_2:
-            self.normalization_layer_2 = nn.LayerNorm(dim_model)
-        else:
-            self.normalization_layer_2 = None
-        if has_normalization_layer_3:
-            self.normalization_layer_3 = nn.LayerNorm(dim_model)
-        else:
-            self.normalization_layer_3 = None
-
+    
     def forward(self, x):
         q = self.wq(x)
         k = self.wk(x)
@@ -56,10 +42,6 @@ class Encoder(nn.Module):
 
         attention = self.scaled_dot_product_attention(q, k, v)
         hidden_state = self.w_o(attention)
-        if self.normalization_layer_2 is not None:
-            hidden_state = self.normalization_layer_2(hidden_state)
-        if self.normalization_layer_3 is not None:
-            hidden_state = self.normalization_layer_3(hidden_state)
         return hidden_state
     
     def scaled_dot_product_attention(self, q, k, v):
@@ -67,6 +49,37 @@ class Encoder(nn.Module):
         attention = (q @ k_transpose) / math.sqrt(self.dk)
         attention = torch.softmax(attention, dim=-1)
         return attention @ v
+
+
+class Encoder(nn.Module):
+    def __init__(
+            self, 
+            dim_model, 
+            dim_k, 
+            dim_v,
+            has_pre_attention_norm: bool,
+            has_post_attention_norm: bool):
+        super().__init__()
+        self.attention = Attention(dim_model, dim_k, dim_v)
+        if has_pre_attention_norm:
+            self.pre_attention_norm = nn.LayerNorm(dim_model)
+        else:
+            self.pre_attention_norm = None
+        if has_post_attention_norm:
+            self.post_attention_norm = nn.LayerNorm(dim_model)
+        else:
+            self.post_attention_norm = None
+
+    def forward(self, x):
+        original_x = x
+        if self.pre_attention_norm is not None:
+            x = self.pre_attention_norm(x)
+        x = self.attention(x)
+        x = x + original_x
+        if self.post_attention_norm is not None:
+            x = self.post_attention_norm(x)
+        return x
+    
 
 class Classifier(nn.Module):
     def __init__(
@@ -77,11 +90,11 @@ class Classifier(nn.Module):
             dim_k: int, 
             dim_v,
             has_positional_encoding: bool,
-            has_normalization_layer_1: bool,
-            has_normalization_layer_2: bool,
-            has_normalization_layer_3: bool,
-            has_normalization_layer_4: bool,
-            has_normalization_layer_5: bool,
+            has_input_norm: bool,
+            has_post_attention_norm: bool,
+            has_post_mlp_norm: bool,
+            has_pre_attention_norm: bool,
+            has_final_norm: bool,
             num_encoders: int):
         super().__init__()
         self.patch_projection = PatchProjection(patch_size=patch_size, stride=stride, dim_model=dim_model)
@@ -95,20 +108,20 @@ class Classifier(nn.Module):
                     dim_model=dim_model, 
                     dim_k=dim_k, 
                     dim_v=dim_v,
-                    has_normalization_layer_2=has_normalization_layer_2,
-                    has_normalization_layer_3=has_normalization_layer_3
+                    has_pre_attention_norm=has_pre_attention_norm,
+                    has_post_attention_norm=has_post_attention_norm
                 ) for _ in range(num_encoders)]
         )
         self.final_projection = nn.Linear(dim_model, 10)
-        if has_normalization_layer_1:
-            self.normalization_layer_1 = nn.LayerNorm(dim_model)
+        if has_input_norm:
+            self.input_norm = nn.LayerNorm(dim_model)
         else:
-            self.normalization_layer_1 = None
+            self.input_norm = None
 
     def forward(self, x):
         x = self.patch_projection(x)                # (batch_size, num_patches, dim_model)
-        if self.normalization_layer_1 is not None:
-            x = self.normalization_layer_1(x)
+        if self.input_norm is not None:
+            x = self.input_norm(x)
         if self.positional_encoding is not None:
             x = self.positional_encoding(x)     # (batch_size, num_patches, dim_model)
         for encoder in self.encoders:

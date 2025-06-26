@@ -14,19 +14,20 @@ import os
 hyperparameters = {
     "batch_size": 1024,
     "learning_rate": 0.001,
-    "epochs": 100,
+    "epochs": 300,
     "patch_kernal_size": 14,
     "patch_stride": 14,
     "dim_model": 64,
     "dim_k": 64,
     "dim_v": 64,
-    "num_encoders": 1,
+    "num_encoders": 6,
     "has_positional_encoding": True,
-    "has_normalization_layer_1": True,
-    "has_normalization_layer_2": False,
-    "has_normalization_layer_3": False,
-    "has_normalization_layer_4": False,
-    "has_normalization_layer_5": False
+    #noralization
+    "has_input_norm": True,
+    "has_post_attention_norm": False,
+    "has_post_mlp_norm": False,
+    "has_pre_attention_norm": False,
+    "has_final_norm": False
 }
 
 # normalization_layer_1: After patch projection
@@ -84,11 +85,11 @@ def main():
         dim_k=hyperparameters["dim_k"],
         dim_v=hyperparameters["dim_v"],
         has_positional_encoding=hyperparameters["has_positional_encoding"],
-        has_normalization_layer_1=hyperparameters["has_normalization_layer_1"],
-        has_normalization_layer_2=hyperparameters["has_normalization_layer_2"],
-        has_normalization_layer_3=hyperparameters["has_normalization_layer_3"],
-        has_normalization_layer_4=hyperparameters["has_normalization_layer_4"],
-        has_normalization_layer_5=hyperparameters["has_normalization_layer_5"],
+        has_input_norm=hyperparameters["has_input_norm"],
+        has_post_attention_norm=hyperparameters["has_post_attention_norm"],
+        has_post_mlp_norm=hyperparameters["has_post_mlp_norm"],
+        has_pre_attention_norm=hyperparameters["has_pre_attention_norm"],
+        has_final_norm=hyperparameters["has_final_norm"],
         num_encoders=hyperparameters["num_encoders"]
     )
 
@@ -119,11 +120,11 @@ def main():
                 "dim_v": hyperparameters["dim_v"],
                 "timestamp": datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
                 "has_positional_encoding": hyperparameters["has_positional_encoding"],
-                "has_normalization_layer_1": hyperparameters["has_normalization_layer_1"],
-                "has_normalization_layer_2": hyperparameters["has_normalization_layer_2"],
-                "has_normalization_layer_3": hyperparameters["has_normalization_layer_3"],
-                "has_normalization_layer_4": hyperparameters["has_normalization_layer_4"],
-                "has_normalization_layer_5": hyperparameters["has_normalization_layer_5"],
+                "has_input_norm": hyperparameters["has_input_norm"],
+                "has_post_attention_norm": hyperparameters["has_post_attention_norm"],
+                "has_post_mlp_norm": hyperparameters["has_post_mlp_norm"],
+                "has_pre_attention_norm": hyperparameters["has_pre_attention_norm"],
+                "has_final_norm": hyperparameters["has_final_norm"],
                 "num_encoders": hyperparameters["num_encoders"],
                 "score": correct_rate
             }
