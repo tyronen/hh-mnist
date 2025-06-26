@@ -54,21 +54,36 @@ def preprocess_image(image_data):
 
     tfm = transforms.Compose(
         [
-            transforms.Resize((28, 28)),
-            transforms.Lambda(
-                lambda img: img.point(lambda p: 255 if p > 50 else 0, "L")
+            transforms.Resize(
+                (28, 28),
+                interpolation=transforms.InterpolationMode.BILINEAR,
+                antialias=True,
             ),
-            transforms.GaussianBlur(kernel_size=3, sigma=0.5),
             transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,)),
         ]
     )
     return tfm(image).squeeze(0)  # (28, 28)
 
 
+TEMPERATURE = 2.0
+
+# normalised value of a pure-black pixel after (0.1307, 0.3081) normalisation
+BLACK_BG = (-0.1307) / 0.3081  # ≈ -0.4248
+
+INTRO = """
+This is a demonstration app showing simple handwriting recognition.
+
+This app uses a deep-learning model trained on the MNIST public dataset of 
+handwritten digits using the Pytorch library.
+
+Draw digits (0-9) in the black boxes and press Predict. The model will then 
+attempt to guess what digits you have entered, and how confident it is in that
+guess as a percentage."""
+
+
 def assemble_composite(tl, tr, bl, br):
     """Stack four (28,28) tensors into one (1,56,56) composite."""
-    composite = torch.zeros(56, 56)
+    composite = torch.full((56, 56), BLACK_BG)
     composite[:28, :28] = tl
     composite[:28, 28:] = tr
     composite[28:, :28] = bl
@@ -80,19 +95,6 @@ def random_string():
     return "".join(
         random.choice(string.ascii_letters + string.digits) for _ in range(8)
     )
-
-
-TEMPERATURE = 2.0
-
-INTRO = """
-This is a demonstration app showing simple handwriting recognition.
-
-This app uses a deep-learning model trained on the MNIST public dataset of 
-handwritten digits using the Pytorch library.
-
-Draw digits (0-9) in the black boxes and press Predict. The model will then 
-attempt to guess what digits you have entered, and how confident it is in that
-guess as a percentage."""
 
 
 def make_canvas(key_index):
@@ -148,26 +150,24 @@ def main():
             composite = assemble_composite(tl, tr, bl, br).to(device)
 
             with torch.no_grad():
-                # greedy autoregressive decode ─ up to 4 digits or <END>
+                # greedy autoregressive decode – predict up to 4 digits
                 input_seq = torch.full(
                     (1, 5), PAD_TOKEN, device=device, dtype=torch.long
                 )
                 input_seq[0, 0] = START_TOKEN
-                tokens = []
-                for pos in range(4):  # max 4 digits
+
+                output_digits = []
+                for pos in range(4):  # decoder positions 0…3
                     logits = model(composite, input_seq)  # (1, 5, vocab)
-                    next_pos = (
-                        (input_seq[0] == PAD_TOKEN).nonzero(as_tuple=False)[0].item()
-                    )
-                    next_token = logits.argmax(-1)[
-                        0, next_pos
-                    ].item()  # token at current position
+                    next_token = logits[0, pos].argmax().item()
+
                     if next_token == END_TOKEN:
                         break
-                    tokens.append(next_token)
-                    input_seq[0, next_pos] = next_token  # feed it back
 
-                st.session_state.prediction = tokens
+                    output_digits.append(next_token)
+                    input_seq[0, pos + 1] = next_token  # feed predicted token back
+
+                st.session_state.prediction = output_digits
             st.session_state.has_prediction = True
 
     if st.session_state.has_prediction:
