@@ -20,8 +20,21 @@ hyperparameters = {
     "dim_model": 64,
     "dim_k": 64,
     "dim_v": 64,
-    "has_positional_encoding": True
+    "num_encoders": 1,
+    "has_positional_encoding": True,
+    "has_normalization_layer_1": True,
+    "has_normalization_layer_2": False,
+    "has_normalization_layer_3": False,
+    "has_normalization_layer_4": False,
+    "has_normalization_layer_5": False
 }
+
+# normalization_layer_1: After patch projection
+# normalization_layer_2: Before attention
+# normalization_layer_3: Before feedforward (FFN) block
+# normalization_layer_4: After adding positional encoding
+# normalization_layer_5: Before final logits projection
+
 
 def train(model, dataloader, loss_function, optimizer, device, epoch_num):
     model.train()
@@ -70,7 +83,13 @@ def main():
         dim_model=hyperparameters["dim_model"],
         dim_k=hyperparameters["dim_k"],
         dim_v=hyperparameters["dim_v"],
-        has_positional_encoding=hyperparameters["has_positional_encoding"]
+        has_positional_encoding=hyperparameters["has_positional_encoding"],
+        has_normalization_layer_1=hyperparameters["has_normalization_layer_1"],
+        has_normalization_layer_2=hyperparameters["has_normalization_layer_2"],
+        has_normalization_layer_3=hyperparameters["has_normalization_layer_3"],
+        has_normalization_layer_4=hyperparameters["has_normalization_layer_4"],
+        has_normalization_layer_5=hyperparameters["has_normalization_layer_5"],
+        num_encoders=hyperparameters["num_encoders"]
     )
 
     loss_function = nn.CrossEntropyLoss()
@@ -79,15 +98,17 @@ def main():
     model.to(device)
     
     best_score = 0  # Initialize best_score
+    best_model_state = None  # Store the best model state
 
     for epoch_num in range(hyperparameters["epochs"]):
         train(model, training_dataloader, loss_function, optimizer, device, epoch_num)
         correct_rate = test(test_dataloader, model, device, epoch_num, loss_function)
         if correct_rate > best_score:
             best_score = correct_rate
-            model_dict = {
-                "model": model.state_dict(),
-                "optimizer": optimizer.state_dict(),
+            # Save the best model state (deep copy to avoid reference issues)
+            best_model_state = {
+                "model": model.state_dict().copy(),
+                "optimizer": optimizer.state_dict().copy(),
                 "epochs": hyperparameters["epochs"],
                 "learning_rate": hyperparameters["learning_rate"],
                 "batch_size": hyperparameters["batch_size"],
@@ -98,14 +119,21 @@ def main():
                 "dim_v": hyperparameters["dim_v"],
                 "timestamp": datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
                 "has_positional_encoding": hyperparameters["has_positional_encoding"],
+                "num_encoders": hyperparameters["num_encoders"],
                 "score": correct_rate
             }
-            i = 1
-            while os.path.exists(f"checkpoints/model-{i:04d}.pth"):
-                i += 1
-            os.makedirs("checkpoints", exist_ok=True)
-            torch.save(model_dict, f"checkpoints/model-{i:04d}.pth")
-            print(f"Model saved to checkpoints/model-{i:04d}.pth with score {correct_rate:.2f}")
+            print(f"New best score: {correct_rate:.4f}")
+
+    # Save only the best model from this training session
+    if best_model_state is not None:
+        i = 1
+        while os.path.exists(f"checkpoints/model-{i:04d}.pth"):
+            i += 1
+        os.makedirs("checkpoints", exist_ok=True)
+        torch.save(best_model_state, f"checkpoints/model-{i:04d}.pth")
+        print(f"Best model saved to checkpoints/model-{i:04d}.pth with score {best_score:.4f}")
+    else:
+        print("No model saved - no improvement achieved")
 
     print("Training complete")
 

@@ -10,7 +10,7 @@ import math
 # Final logits          (25, 10)
 
 
-class Patchify(nn.Module):
+class PatchProjection(nn.Module):
     def __init__(
             self, 
             patch_size, 
@@ -22,7 +22,7 @@ class Patchify(nn.Module):
         
     def forward(self, x):
         patches = self.unfold(x)                # (batch_size, patch_size * patch_size, num_patches)
-        patches = patches.transpose(-2, -1)      # (batch_size, num_patches, patch_size * patch_size)
+        patches = patches.transpose(-2, -1)     # (batch_size, num_patches, patch_size * patch_size)
         x = self.linear(patches)                # (batch_size, num_patches, dim_model)
         return x
     
@@ -31,14 +31,24 @@ class Encoder(nn.Module):
             self, 
             dim_model, 
             dim_k, 
-            dim_v):
+            dim_v,
+            has_normalization_layer_2: bool,
+            has_normalization_layer_3: bool):
         super().__init__()
         self.dk = dim_k
         self.wq = nn.Linear(dim_model, dim_k, bias=False)
         self.wk = nn.Linear(dim_model, dim_k, bias=False)
         self.wv = nn.Linear(dim_model, dim_v, bias=False)
         self.w_o = nn.Linear(dim_v, dim_model, bias=False)
-        
+        if has_normalization_layer_2:
+            self.normalization_layer_2 = nn.LayerNorm(dim_model)
+        else:
+            self.normalization_layer_2 = None
+        if has_normalization_layer_3:
+            self.normalization_layer_3 = nn.LayerNorm(dim_model)
+        else:
+            self.normalization_layer_3 = None
+
     def forward(self, x):
         q = self.wq(x)
         k = self.wk(x)
@@ -46,6 +56,10 @@ class Encoder(nn.Module):
 
         attention = self.scaled_dot_product_attention(q, k, v)
         hidden_state = self.w_o(attention)
+        if self.normalization_layer_2 is not None:
+            hidden_state = self.normalization_layer_2(hidden_state)
+        if self.normalization_layer_3 is not None:
+            hidden_state = self.normalization_layer_3(hidden_state)
         return hidden_state
     
     def scaled_dot_product_attention(self, q, k, v):
@@ -62,20 +76,39 @@ class Classifier(nn.Module):
             dim_model: int, 
             dim_k: int, 
             dim_v,
-            has_positional_encoding: bool):
+            has_positional_encoding: bool,
+            has_normalization_layer_1: bool,
+            has_normalization_layer_2: bool,
+            has_normalization_layer_3: bool,
+            has_normalization_layer_4: bool,
+            has_normalization_layer_5: bool,
+            num_encoders: int):
         super().__init__()
-        self.patchify = Patchify(patch_size=patch_size, stride=stride, dim_model=dim_model)
+        self.patch_projection = PatchProjection(patch_size=patch_size, stride=stride, dim_model=dim_model)
         if has_positional_encoding:
             self.positional_encoding = PositionalEncoding(dim_model=dim_model, num_patches=4)
         else:
             self.positional_encoding = None
         self.encoders = nn.ModuleList(
-            [Encoder(dim_model=dim_model, dim_k=dim_k, dim_v=dim_v)]
+            [
+                Encoder(
+                    dim_model=dim_model, 
+                    dim_k=dim_k, 
+                    dim_v=dim_v,
+                    has_normalization_layer_2=has_normalization_layer_2,
+                    has_normalization_layer_3=has_normalization_layer_3
+                ) for _ in range(num_encoders)]
         )
         self.final_projection = nn.Linear(dim_model, 10)
+        if has_normalization_layer_1:
+            self.normalization_layer_1 = nn.LayerNorm(dim_model)
+        else:
+            self.normalization_layer_1 = None
 
     def forward(self, x):
-        x = self.patchify(x)                # (batch_size, num_patches, dim_model)
+        x = self.patch_projection(x)                # (batch_size, num_patches, dim_model)
+        if self.normalization_layer_1 is not None:
+            x = self.normalization_layer_1(x)
         if self.positional_encoding is not None:
             x = self.positional_encoding(x)     # (batch_size, num_patches, dim_model)
         for encoder in self.encoders:

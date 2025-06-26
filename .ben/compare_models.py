@@ -25,6 +25,17 @@ def load_checkpoint_info(checkpoint_path):
                     has_positional_encoding = True
                     break
         
+        # Create compact normalization representation
+        norm_layers = [
+            checkpoint.get('has_normalization_layer_1', False),
+            checkpoint.get('has_normalization_layer_2', False),
+            checkpoint.get('has_normalization_layer_3', False),
+            checkpoint.get('has_normalization_layer_4', False),
+            checkpoint.get('has_normalization_layer_5', False),
+        ]
+        # Convert to compact format: "x,x,x,4,x" where numbers show True positions
+        norm_compact = ','.join([str(i+1) if norm_layers[i] else 'x' for i in range(5)])
+        
         # Extract hyperparameters and metrics
         info = {
             'checkpoint': os.path.basename(checkpoint_path),
@@ -38,7 +49,14 @@ def load_checkpoint_info(checkpoint_path):
             'dim_model': checkpoint.get('dim_model', 'Unknown'),
             'dim_k': checkpoint.get('dim_k', 'Unknown'),
             'dim_v': checkpoint.get('dim_v', 'Unknown'),
+            'num_encoders': checkpoint.get('num_encoders', 1),
             'has_positional_encoding': has_positional_encoding,  # Actually detected from state_dict
+            'normalization': norm_compact,  # Compact representation
+            'has_normalization_layer_1': checkpoint.get('has_normalization_layer_1', False),
+            'has_normalization_layer_2': checkpoint.get('has_normalization_layer_2', False),
+            'has_normalization_layer_3': checkpoint.get('has_normalization_layer_3', False),
+            'has_normalization_layer_4': checkpoint.get('has_normalization_layer_4', False),
+            'has_normalization_layer_5': checkpoint.get('has_normalization_layer_5', False),
         }
         
         # Try to recreate model to count parameters
@@ -49,7 +67,13 @@ def load_checkpoint_info(checkpoint_path):
                 dim_model=info['dim_model'],
                 dim_k=info['dim_k'],
                 dim_v=info['dim_v'],
-                has_positional_encoding=info['has_positional_encoding']
+                has_positional_encoding=info['has_positional_encoding'],
+                has_normalization_layer_1=info['has_normalization_layer_1'],
+                has_normalization_layer_2=info['has_normalization_layer_2'],
+                has_normalization_layer_3=info['has_normalization_layer_3'],
+                has_normalization_layer_4=info['has_normalization_layer_4'],
+                has_normalization_layer_5=info['has_normalization_layer_5'],
+                num_encoders=info['num_encoders']  # Already defaults to 1
             )
             total_params, trainable_params = count_parameters(model)
             info['total_params'] = total_params
@@ -118,7 +142,7 @@ def print_summary(df):
     # Top 5 performers
     print("TOP 5 PERFORMERS:")
     print("-" * 50)
-    top_5 = df.nlargest(5, 'score')[['checkpoint', 'score', 'dim_model', 'learning_rate', 'has_positional_encoding', 'total_params']].copy()
+    top_5 = df.nlargest(5, 'score')[['checkpoint', 'score', 'dim_model', 'num_encoders', 'learning_rate', 'has_positional_encoding', 'normalization', 'total_params']].copy()
     # Format score as percentage
     top_5['score'] = top_5['score'].apply(lambda x: f"{x*100:.2f}%" if isinstance(x, (int, float)) else x)
     # Format parameters with commas
@@ -145,9 +169,9 @@ def print_detailed_comparison(df):
     
     # Select columns to display
     display_columns = [
-        'checkpoint', 'score', 'dim_model', 'dim_k', 'dim_v', 
+        'checkpoint', 'score', 'dim_model', 'dim_k', 'dim_v', 'num_encoders',
         'learning_rate', 'batch_size', 'patch_kernal_size', 
-        'has_positional_encoding', 'total_params', 'timestamp'
+        'has_positional_encoding', 'normalization', 'total_params', 'timestamp'
     ]
     
     # Filter columns that exist in the dataframe
