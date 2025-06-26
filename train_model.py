@@ -16,11 +16,11 @@ from models import VitTransformer
 import utils
 
 # config given here represents approximate best run, according to sweeps/experiments (should achieve 99% test acc)
-# note that a similar result was also achieved with a 32 epoch run w/ 1024 ffn dims, 32 heads, patch size 7 (see sweep 9wmxmvo1)
+# NB. a similar result was achieved with a 32 epoch run on 1024 ffn dims, 32 heads, patch size of 7 and weight decay of 1e-2 (see sweep 9wmxmvo1)
 hyperparameters = {
     "batch_size": 2048,
     "learning_rate": 5e-4,
-    "epochs": 32,
+    "epochs": 25,
     "patience": 2,
     "patch_size": 14,  # base MNIST images are 28x28, so patch size of 7 -> 16 patches (or 14 -> 4 patches)
     "model_dim": 256,
@@ -312,7 +312,9 @@ def run_training(
                 torch.save(model_dict, utils.SIMPLE_MODEL_FILE)
         else:
             epochs_since_best += 1
-        if epochs_since_best >= config["patience"]:
+        if config["patience"] == -1:
+            continue  # add option to disable early stop
+        elif epochs_since_best >= config["patience"]:
             break
 
     return model
