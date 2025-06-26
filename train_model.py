@@ -15,20 +15,21 @@ from tqdm import tqdm
 from models import VitTransformer
 import utils
 
-# config given here represents (approx.) best run so far, according to sweeps/experiments
+# config given here represents approximate best run, according to sweeps/experiments (should achieve 99% test acc)
+# note that a similar result was also achieved with a 32 epoch run w/ 1024 ffn dims, 32 heads, patch size 7 (see sweep 9wmxmvo1)
 hyperparameters = {
     "batch_size": 2048,
-    "learning_rate": 0.0001,
+    "learning_rate": 5e-4,
     "epochs": 32,
     "patience": 2,
     "patch_size": 14,  # base MNIST images are 28x28, so patch size of 7 -> 16 patches (or 14 -> 4 patches)
-    "model_dim": 512,
+    "model_dim": 256,
     "ffn_dim": 2048,
     "num_encoders": 5,
-    "num_heads": 32,
+    "num_heads": 64,
     "seed": 42,
     "dropout": 0.15,
-    "weight_decay": 0,
+    "weight_decay": 1e-4,
 }
 
 sweep_config = {
