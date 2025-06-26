@@ -15,12 +15,13 @@ from tqdm import tqdm
 from models import VitTransformer
 import utils
 
+# TODO: expose dropout and label smoothing as hyperparameters
 hyperparameters = {
     "batch_size": 1024,
     "learning_rate": 0.001,
     "epochs": 20,
     "patience": 2,
-    "patch_size": 14,  # base MNIST images are 28x28, so patch size of 7 -> 16 patches
+    "patch_size": 14,  # base MNIST images are 28x28, so patch size of 7 -> 16 patches (or 14 -> 4 patches)
     "model_dim": 128,
     "ffn_dim": 64,
     "num_encoders": 3,
@@ -110,6 +111,7 @@ def run_batch(
 
 def setup_data():
     """Setup and return datasets and dataloaders."""
+    # TODO: add some augmentation here to improve model robustness (e.g. random rotation/affine/perspective)
     transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
     raw_data = datasets.MNIST(root="data", train=True, download=True, transform=transform)
     stats_dataloader = DataLoader(raw_data, batch_size=len(raw_data.data), shuffle=False)
@@ -174,8 +176,8 @@ def run_single_training(config=None):
     )
     model.to(device)
 
-    loss_fn = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"])
+    loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
+    optimizer = optim.AdamW(model.parameters(), lr=config["learning_rate"])
 
     wandb.watch(model, log="all", log_freq=100)
     wandb.define_metric("val_accuracy", summary="max")
