@@ -14,7 +14,7 @@ class PositionalEncoding(nn.Module):
         self,
         model_dim: int,
         max_len: int = PE_MAX_LEN,
-        trainable: bool = False,
+        trainable: bool = True,
     ):
         super().__init__()
         if trainable:
@@ -40,21 +40,17 @@ class PositionalEncoding(nn.Module):
 
 class Patchify(nn.Module):
     # think of each patch as an image token (i.e. as a word, if this was NLP)
-    def __init__(self, patch_size: int, model_dim: int, use_patch_norm: bool = True):
+    def __init__(self, patch_size: int, model_dim: int):
         super().__init__()
         # use conv2d to unfold each image into patches (more efficient on GPU)
         self.proj = nn.Conv2d(1, model_dim, kernel_size=patch_size, stride=patch_size)
         # optionally normalise patch embeddings before they enter the transformer proper
-        self.use_patch_norm = use_patch_norm
-        if use_patch_norm:
-            self.norm = nn.LayerNorm(model_dim)
+        self.norm = nn.LayerNorm(model_dim)
 
     def forward(self, x):
         x = self.proj(x).flatten(2)
         x = x.permute(0, 2, 1)
-        if self.use_patch_norm:
-            return self.norm(x)
-        return x
+        return self.norm(x)
 
 
 def attention(k_dim, q, k, v, mask_tensor):
@@ -197,13 +193,12 @@ class BaseTransformer(nn.Module):
         num_encoders: int,
         use_cls: bool,
         dropout: float = 0.1,
-        train_pe: bool = False,
         use_patch_norm: bool = True,
     ):
         super().__init__()
-        self.patchify = Patchify(patch_size, model_dim, use_patch_norm=use_patch_norm)
+        self.patchify = Patchify(patch_size, model_dim)
         self.use_cls = use_cls
-        self.pe = PositionalEncoding(model_dim, trainable=train_pe)
+        self.pe = PositionalEncoding(model_dim)
         self.cls_token = nn.Parameter(torch.randn(1, 1, model_dim))
 
         def make_encoder() -> nn.Module:
@@ -234,9 +229,7 @@ class VitTransformer(nn.Module):
         ffn_dim: int,
         num_heads: int,
         num_encoders: int,
-        train_pe: bool = False,
         dropout: float = 0.1,
-        use_patch_norm: bool = True,
     ):
         super().__init__()
         self.base_transformer = BaseTransformer(
@@ -246,9 +239,7 @@ class VitTransformer(nn.Module):
             num_heads=num_heads,
             num_encoders=num_encoders,
             use_cls=True,
-            train_pe=train_pe,
             dropout=dropout,
-            use_patch_norm=use_patch_norm,
         )
         self.mlp = nn.Sequential(
             nn.LayerNorm(model_dim),
