@@ -43,7 +43,7 @@ class Patchify(nn.Module):
     def __init__(self, patch_size: int, model_dim: int):
         super().__init__()
         # use conv2d to unfold each image into patches (more efficient on GPU)
-        self.proj = nn.Conv2d(1, model_dim, kernel_size=patch_size, stride=patch_size)
+        self.proj = nn.Conv2d(1, model_dim, kernel_size=patch_size, stride=patch_size, bias=False)
         # optionally normalise patch embeddings before they enter the transformer proper
         self.norm = nn.LayerNorm(model_dim)
 
