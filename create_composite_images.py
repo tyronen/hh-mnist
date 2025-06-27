@@ -38,10 +38,8 @@ def create_composite_image(mnist_images, mnist_labels, num_images):
             continue
         # Place the 28x28 MNIST image at the selected position
         y, x = pos
-        y += 28
-        x += 28
         idx = indices[last_index]
-        composite[0, y, x] = mnist_images[idx][0]
+        composite[0, y: y + 28, x: x+ 28] = mnist_images[idx][0]
         labels.append(mnist_labels[idx])
         last_index += 1
 
@@ -54,6 +52,7 @@ def create_transformer_seqs(labels):
     # Output: labels + END_TOKEN (padded to max length)
 
     max_seq_len = 5  # START + up to 4 labels, or up to 4 labels + END
+    assert(len(labels) == max_seq_len - 1)
 
     # Input sequence: [START_TOKEN, label1, label2, ..., PAD, PAD]
     input_seq = [START_TOKEN] + labels[:-1]

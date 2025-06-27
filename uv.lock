@@ -495,10 +495,6 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
-cuda124 = [
-    { name = "torch" },
-    { name = "torchvision" },
-]
 inference = [
     { name = "notebook" },
     { name = "streamlit" },
@@ -514,16 +510,12 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-cuda124 = [
-    { name = "torch", specifier = ">=2.6.0" },
-    { name = "torchvision", specifier = ">=0.21.0" },
-]
 inference = [
     { name = "notebook", specifier = ">=7.4.3" },
     { name = "streamlit", specifier = ">=1.46.0" },
     { name = "streamlit-drawable-canvas", specifier = ">=0.9.3" },
     { name = "torch", specifier = ">=2.6.0" },
-    { name = "torchvision", specifier = ">=0.21.0" },
+    { name = "torchvision", specifier = ">=0.22.0" },
 ]
 
 [[package]]

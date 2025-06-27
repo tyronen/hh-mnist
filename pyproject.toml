@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
-url = "https://download.pytorch.org/whl/cu124"
 dependencies = [
     # DO NOT PUT torch or anything depending on numpy here!
     # That would overwrite Computa's versions
@@ -13,14 +12,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-cuda124 = [
-    "torch>=2.6.0",
-    "torchvision>=0.21.0",
-]
 inference = [
     "notebook>=7.4.3",
     "streamlit>=1.46.0",
     "streamlit-drawable-canvas>=0.9.3",
     "torch>=2.6.0",
-    "torchvision>=0.21.0",
+    "torchvision>=0.22.0",
 ]
