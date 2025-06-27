@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 
 VOCAB_SIZE = 13  # digits 0-9, plus start, finish, pad
 PE_MAX_LEN = 64  # max length of pe, i.e. max number of patches we expect from an image
@@ -13,12 +14,13 @@ class PositionalEncoding(nn.Module):
         self,
         model_dim: int,
         max_len: int = PE_MAX_LEN,
-        trainable: bool = False,
+        trainable: bool = True,
     ):
         super().__init__()
         if trainable:
             # Learnable positional encoding
-            self.pe = nn.Parameter(torch.randn(1, max_len, model_dim) * 0.02)
+            self.pe = nn.Parameter(torch.zeros(1, max_len, model_dim))
+            nn.init.trunc_normal_(self.pe, std=0.02)
         else:
             # Fixed sinusoidal positional encoding (original implementation)
             pe = torch.zeros(max_len, model_dim)
@@ -31,20 +33,24 @@ class PositionalEncoding(nn.Module):
             self.register_buffer("pe", pe)
 
     def forward(self, x):
-        return x + self.pe[:, : x.size(1)]  # type: ignore
+        # Add dropout to PE for regularization
+        pe = self.pe[:, : x.size(1)]
+        return x + F.dropout(pe, p=0.1, training=self.training)
 
 
 class Patchify(nn.Module):
     # think of each patch as an image token (i.e. as a word, if this was NLP)
     def __init__(self, patch_size: int, model_dim: int):
         super().__init__()
-        self.unfold = nn.Unfold(kernel_size=patch_size, stride=patch_size)
-        self.linear = nn.Linear(patch_size**2, model_dim, bias=False)
+        # use conv2d to unfold each image into patches (more efficient on GPU)
+        self.proj = nn.Conv2d(1, model_dim, kernel_size=patch_size, stride=patch_size, bias=False)
+        # optionally normalise patch embeddings before they enter the transformer proper
+        self.norm = nn.LayerNorm(model_dim)
 
     def forward(self, x):
-        patches = self.unfold(x)
-        rotated = patches.permute(0, 2, 1)
-        return self.linear(rotated)
+        x = self.proj(x).flatten(2)
+        x = x.permute(0, 2, 1)
+        return self.norm(x)
 
 
 def attention(k_dim, q, k, v, mask_tensor):
@@ -59,13 +65,14 @@ def attention(k_dim, q, k, v, mask_tensor):
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, model_dim: int, num_heads: int, mask: bool):
+    def __init__(self, model_dim: int, num_heads: int, mask: bool, dropout: float = 0.1):
         super().__init__()
         self.num_heads = num_heads
         self.model_dim = model_dim
         self.k_dim = model_dim // num_heads
         self.wqkv = nn.Linear(model_dim, 3 * model_dim, bias=False)
         self.endmulti = nn.Linear(model_dim, model_dim, bias=False)
+        self.dropout = nn.Dropout(dropout)
         self.mask = mask
 
     def rearrange(self, vector, B, L):
@@ -78,12 +85,14 @@ class SelfAttention(nn.Module):
         qh = self.rearrange(q, B, L)
         kh = self.rearrange(k, B, L)
         vh = self.rearrange(v, B, L)
+
         mask_tensor = None
         if self.mask:
             mask_tensor = torch.triu(torch.ones(L, L, device=x.device), diagonal=1).bool()
 
         attended = attention(self.k_dim, qh, kh, vh, mask_tensor=mask_tensor)
         concatted = attended.transpose(1, 2).reshape(B, L, self.model_dim)
+        concatted = self.dropout(concatted)
         return self.endmulti(concatted)
 
 
@@ -116,11 +125,12 @@ class CrossAttention(nn.Module):
 
 
 class FeedForward(nn.Module):
-    def __init__(self, model_dim: int, ffn_dim: int):
+    def __init__(self, model_dim: int, ffn_dim: int, dropout: float = 0.1):
         super().__init__()
         self.sequence = nn.Sequential(
             nn.Linear(model_dim, ffn_dim, bias=True),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(ffn_dim, model_dim, bias=True),
         )
 
@@ -134,25 +144,29 @@ class Encoder(nn.Module):
         model_dim: int,
         ffn_dim: int,
         num_heads: int,
+        dropout: float,
     ):
         super().__init__()
         # here, 'multi-head dot-product self attention blocks [...] completely replace convolutions' (see 16x16)
-        self.mha = SelfAttention(model_dim=model_dim, num_heads=num_heads, mask=False)
+        self.mha = SelfAttention(
+            model_dim=model_dim, num_heads=num_heads, mask=False, dropout=dropout
+        )
         self.norm1 = nn.LayerNorm(model_dim)
-        self.ffn = FeedForward(model_dim, ffn_dim)
+        self.ffn = FeedForward(model_dim, ffn_dim, dropout=dropout)
         self.norm2 = nn.LayerNorm(model_dim)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         mhead = self.mha(x)
-        addnormed = self.norm1(x + mhead)
+        addnormed = self.norm1(x + self.dropout(mhead))
 
         # pass attention output through feed-forward sub-layer (basic MLP)
         ffned = self.ffn(addnormed)
-        return self.norm2(addnormed + ffned)
+        return self.norm2(addnormed + self.dropout(ffned))
 
 
 class Decoder(nn.Module):
-    def __init__(self, model_dim: int, ffn_dim: int, num_heads: int):
+    def __init__(self, model_dim: int, ffn_dim: int, num_heads: int, dropout: float):
         super().__init__()
         self.masked_self_mha = SelfAttention(model_dim=model_dim, num_heads=num_heads, mask=True)
         self.norm1 = nn.LayerNorm(model_dim)
@@ -160,14 +174,15 @@ class Decoder(nn.Module):
         self.norm2 = nn.LayerNorm(model_dim)
         self.ffn = FeedForward(model_dim=model_dim, ffn_dim=ffn_dim)
         self.norm3 = nn.LayerNorm(model_dim)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, images, text):
         stage1 = self.masked_self_mha(text)
-        addnormed_text = self.norm1(text + stage1)
+        addnormed_text = self.norm1(text + self.dropout(stage1))
         stage2 = self.cross_mha(images, addnormed_text)
-        addnormed_stage2 = self.norm2(addnormed_text + stage2)
+        addnormed_stage2 = self.norm2(addnormed_text + self.dropout(stage2))
         ffned = self.ffn(addnormed_stage2)
-        return self.norm3(addnormed_stage2 + ffned)
+        return self.norm3(addnormed_stage2 + self.dropout(ffned))
 
 
 class BaseTransformer(nn.Module):
@@ -179,16 +194,18 @@ class BaseTransformer(nn.Module):
         num_heads: int,
         num_encoders: int,
         use_cls: bool,
-        train_pe: bool = False,
+        dropout: float,
     ):
         super().__init__()
         self.patchify = Patchify(patch_size, model_dim)
         self.use_cls = use_cls
-        self.pe = PositionalEncoding(model_dim, trainable=train_pe)
+        self.pe = PositionalEncoding(model_dim)
         self.cls_token = nn.Parameter(torch.randn(1, 1, model_dim))
 
         def make_encoder() -> nn.Module:
-            return Encoder(model_dim=model_dim, num_heads=num_heads, ffn_dim=ffn_dim)
+            return Encoder(
+                model_dim=model_dim, num_heads=num_heads, ffn_dim=ffn_dim, dropout=dropout
+            )
 
         self.encoder_series = nn.ModuleList([make_encoder() for _ in range(num_encoders)])
 
@@ -213,7 +230,7 @@ class VitTransformer(nn.Module):
         ffn_dim: int,
         num_heads: int,
         num_encoders: int,
-        train_pe: bool = False,
+        dropout: float = 0.1,
     ):
         super().__init__()
         self.base_transformer = BaseTransformer(
@@ -223,19 +240,21 @@ class VitTransformer(nn.Module):
             num_heads=num_heads,
             num_encoders=num_encoders,
             use_cls=True,
-            train_pe=train_pe,
+            dropout=dropout,
         )
-        self.linear = nn.Sequential(
+        self.mlp = nn.Sequential(
             nn.LayerNorm(model_dim),
-            nn.Linear(model_dim, model_dim),
+            # force compression of information by halving model dim here (to improve generalisation)
+            nn.Linear(model_dim, model_dim // 2),
             nn.GELU(),
-            nn.Linear(model_dim, 10),
+            nn.Dropout(dropout),
+            nn.Linear(model_dim // 2, 10),
         )
 
     def forward(self, x):
         base = self.base_transformer(x)
         cls = base[:, 0, :]
-        return self.linear(cls)
+        return self.mlp(cls)
 
 
 class ComplexTransformer(nn.Module):
@@ -246,6 +265,8 @@ class ComplexTransformer(nn.Module):
         ffn_dim: int,
         num_heads: int,
         num_coders: int,
+        dropout: float,
+        train_pe: bool,
     ):
         super().__init__()
         self.base_transformer = BaseTransformer(
@@ -254,15 +275,17 @@ class ComplexTransformer(nn.Module):
             ffn_dim=ffn_dim,
             num_heads=num_heads,
             num_encoders=num_coders,
+            dropout=dropout,
             use_cls=False,
         )
-        self.embedding = nn.Embedding(
-            num_embeddings=VOCAB_SIZE, embedding_dim=model_dim
-        )
-        self.pe = PositionalEncoding(model_dim=model_dim)
+        self.embedding = nn.Embedding(num_embeddings=VOCAB_SIZE, embedding_dim=model_dim)
+        self.pe = torch.nn.Embedding(5, model_dim)
+        self.register_buffer("rng", torch.arange(5))
 
         def make_decoder() -> nn.Module:
-            return Decoder(model_dim=model_dim, ffn_dim=ffn_dim, num_heads=num_heads)
+            return Decoder(
+                model_dim=model_dim, ffn_dim=ffn_dim, num_heads=num_heads, dropout=dropout
+            )
 
         self.decoder_series = nn.ModuleList([make_decoder() for _ in range(num_coders)])
 
@@ -271,7 +294,8 @@ class ComplexTransformer(nn.Module):
     def forward(self, images, input_seqs):
         encoded = self.base_transformer(images)
         text = self.embedding(input_seqs)
-        text = self.pe(text)
+        # for this to work, text length must always be 5!
+        text = text + self.pe(self.rng)
         for decoder in self.decoder_series:
             text = decoder(encoded, text)
         return self.linear(text)

@@ -15,34 +15,38 @@ from tqdm import tqdm
 from models import VitTransformer
 import utils
 
+# config given here represents approximate best run, according to sweep experiments (should achieve 99% test acc)
+# NB. a similar 99% result was achieved with 32 epochs on: ffn_dims=1024, num_heads=32, patch_size=7, weight_decay=1e-2 (see sweeps/9wmxmvo1.csv)
 hyperparameters = {
-    "batch_size": 1024,
-    "learning_rate": 0.001,
-    "epochs": 20,
-    "patience": 2,
-    "patch_size": 14,  # base MNIST images are 28x28, so patch size of 7 -> 16 patches
-    "model_dim": 128,
-    "ffn_dim": 64,
-    "num_encoders": 3,
-    "num_heads": 4,
+    "batch_size": 2048,
+    "learning_rate": 5e-4,
+    "epochs": 25,
+    "patience": 3,
+    "patch_size": 14,  # base MNIST images are 28x28, so patch size of 7 -> 16 patches (or 14 -> 4 patches)
+    "model_dim": 256,
+    "ffn_dim": 2048,
+    "num_encoders": 5,
+    "num_heads": 64,
     "seed": 42,
-    "train_pe": False,
+    "dropout": 0.15,
+    "weight_decay": 1e-4,
 }
 
 sweep_config = {
-    "method": "grid",  # Can be 'grid', 'random', or 'bayes'
+    "method": "bayes",  # can be 'grid', 'random', or 'bayes'
     "metric": {"name": "test_accuracy", "goal": "maximize"},
     "parameters": {
         "batch_size": {"values": [2048]},
-        "learning_rate": {"values": [1e-4]},
-        "epochs": {"values": [32]},
-        "patience": {"values": [2]},
-        "patch_size": {"values": [14]},
-        "model_dim": {"values": [512]},
-        "ffn_dim": {"values": [2048, 4096]},
-        "num_encoders": {"values": [4, 5, 6]},
-        "num_heads": {"values": [16, 32, 64]},
-        "train_pe": {"values": [True, False]},
+        "learning_rate": {"values": [5e-4]},
+        "epochs": {"values": [25, 32, 45, 64, 95]},
+        "patience": {"values": [-1]},
+        "patch_size": {"values": [7, 14]},
+        "model_dim": {"values": [256, 512]},
+        "ffn_dim": {"values": [1024, 2048]},
+        "num_encoders": {"values": [5, 6]},
+        "num_heads": {"values": [32, 64]},
+        "dropout": {"values": [0.15]},
+        "weight_decay": {"values": [1e-4]},
     },
 }
 
@@ -110,8 +114,18 @@ def run_batch(
 
 def setup_data():
     """Setup and return datasets and dataloaders."""
-    transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
-    raw_data = datasets.MNIST(root="data", train=True, download=True, transform=transform)
+    # TODO: add some augmentation here to improve model robustness (e.g. random rotation/affine/perspective)
+    train_transform = v2.Compose(
+        [
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
+            # 'augment' training data by randomly applying wonkiness
+            v2.RandomAffine(degrees=10, translate=(0.1, 0.1)),  # type: ignore
+        ]
+    )
+    test_transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
+
+    raw_data = datasets.MNIST(root="data", train=True, download=True, transform=train_transform)
     stats_dataloader = DataLoader(raw_data, batch_size=len(raw_data.data), shuffle=False)
     images, _ = next(iter(stats_dataloader))
 
@@ -119,7 +133,7 @@ def setup_data():
     val_size = len(raw_data) - train_size
     generator = torch.Generator().manual_seed(hyperparameters["seed"])
     training_data, val_data = random_split(raw_data, [train_size, val_size], generator)
-    test_data = datasets.MNIST(root="data", train=False, download=True, transform=transform)
+    test_data = datasets.MNIST(root="data", train=False, download=True, transform=test_transform)
 
     return training_data, val_data, test_data
 
@@ -170,12 +184,14 @@ def run_single_training(config=None):
         ffn_dim=config["ffn_dim"],
         num_encoders=config["num_encoders"],
         num_heads=config["num_heads"],
-        train_pe=config["train_pe"],
+        dropout=config["dropout"],
     )
     model.to(device)
 
-    loss_fn = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"])
+    loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
+    optimizer = optim.AdamW(
+        model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"]
+    )
 
     wandb.watch(model, log="all", log_freq=100)
     wandb.define_metric("val_accuracy", summary="max")
@@ -296,7 +312,9 @@ def run_training(
                 torch.save(model_dict, utils.SIMPLE_MODEL_FILE)
         else:
             epochs_since_best += 1
-        if epochs_since_best >= config["patience"]:
+        if config["patience"] == -1:
+            continue  # add option to disable early stop
+        elif epochs_since_best >= config["patience"]:
             break
 
     return model
@@ -316,7 +334,7 @@ def run_sweep():
         sweep_id=sweep_id,
         function=sweep_train,
         project=args.project,
-        count=36,
+        count=50,
     )
 
 

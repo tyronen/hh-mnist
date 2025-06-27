@@ -25,6 +25,8 @@ if [[ -n "$SSH_CONNECTION" && -d /workspace ]]; then
   set +a
 fi
 
+uv venv --system-site-packages
+
 # install python packages (using nightly index for latest torch if beast mode enabled)
 if [[ "$BEAST_MODE" == "1" ]]; then
   echo "🔥 BEAST_MODE enabled - using nightly config for torch prereleases"
@@ -33,5 +35,4 @@ else
   uv sync
 fi
 
-# finally, activate virtual environment for running python scripts
 source .venv/bin/activate
