@@ -242,6 +242,7 @@ Can a models with _thousands_ fewer parameters perform as well?
 <v-click at="12"><li>No</li></v-click>
 <v-click at="14"><li>Slidev</li></v-click>
 </ul>
+
 ---
 transition: slide-up
 level: 2
@@ -251,6 +252,8 @@ level: 2
 
 <a href="http://localhost:8501" target="_blank">First Demo</a>
 
+---
+transition: fade
 ---
 
 # Anton: Vision to Sequence with Fine-Tuning + [Demo](https://anton-dergunov.github.io/vision_to_sequence/)
@@ -299,5 +302,3 @@ level: 2
     </figure>
   </div>
 </div>
-
----
