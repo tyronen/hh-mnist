@@ -160,8 +160,6 @@ def run_single_training(config=None):
         dropout=hyperparameters["dropout"],
         train_pe=hyperparameters["train_pe"],
     ).to(device)
-    if device.type == "cuda":
-        model = torch.compile(model)
     loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = optim.Adam(model.parameters(), lr=hyperparameters["learning_rate"])
 

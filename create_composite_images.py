@@ -54,10 +54,8 @@ def create_transformer_seqs(labels):
     assert len(labels) == 4
 
     # Input sequence: [START_TOKEN, label1, label2]
-    # because we use masked self-attention, we have to drop the last digit
-    # otherwise every time-step can still see its own answer through the attention identity path
-    # and you get the copy-shortcut/100 % accuracy bug.
-    input_seq = [START_TOKEN] + labels[:-1]
+    # We don't truncate the labels, because this is now a fixed length
+    input_seq = [START_TOKEN] + labels
 
     # Output sequence: [label1, label2, ..., END_TOKEN]
     output_seq = labels + [END_TOKEN]
