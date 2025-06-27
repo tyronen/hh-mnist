@@ -22,7 +22,7 @@ hyperparameters = {
     "learning_rate": 5e-4,
     "epochs": 95,
     "patience": -1,
-    "patch_size": 7,  # base MNIST images are 28x28
+    "patch_size": 4,  # base MNIST images are 28x28, patch size must divide that
     "model_dim": 256,
     "ffn_dim": 2048,
     "num_encoders": 5,
