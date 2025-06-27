@@ -29,7 +29,114 @@ mdc: true
 Anton Dergunov, Dan Goss, Ben Liong, Tyrone Nicholas
 
 ---
-transition: fade-out
+transition: slide-right
+---
+
+# What We Built (3x)
+
+
+```mermaid
+flowchart LR
+  classDef data fill:#9dceed
+  classDef code fill:#5ebd79
+  mnist[MNIST data]
+  cci(create composite images)
+  data[composite*.pt]
+  simple(train model)
+  sdata[simple.pth]
+  complex(train complex model)
+  cdata[complex.pth]
+  web(webserver)
+  class mnist,data,sdata,cdata data;
+  class cci,simple,complex,web code;
+  mnist --> cci
+  cci --> data
+  data --> simple
+  simple --> sdata
+  data --> complex
+  complex --> cdata
+  cdata --> web  
+```
+
+---
+transition: slide-right
+---
+
+# What we built (3x)
+
+```plantuml
+@startuml
+left to right direction
+class PositionalEncoding {
+  Parameter
+  Dropout
+}
+class Patchify {
+  Conv2d
+  LayerNorm
+}
+entity attention {
+  mask
+}
+class SelfAttention {
+  Linear wqkv
+  Linear endmulti
+  Dropout
+  bool mask
+}
+  
+class CrossAttention {
+  Linear wq, wk, wv
+  Linear endmulti
+}
+
+class FeedForward {
+  Linear, ReLU, Dropout, Linear
+}
+class Encoder {
+  LayerNorm(2)
+  Dropout 
+}
+
+class Decoder {
+  LayerNorm(3)
+  Dropout
+}
+
+class BaseTransformer {
+  bool use_cls
+}
+class VitTransformer {
+  LayerNorm
+  Linear
+  GELU
+  Dropout
+  Linear
+}
+
+class ComplexTransformer {
+  Embedding text
+  Embedding position
+}
+ComplexTransformer --> BaseTransformer
+ComplexTransformer --> Decoder
+VitTransformer --> BaseTransformer
+BaseTransformer --> Patchify
+BaseTransformer --> PositionalEncoding
+BaseTransformer --> Encoder
+Decoder --> SelfAttention
+Decoder --> CrossAttention
+Decoder --> FeedForward
+Encoder --> SelfAttention
+Encoder --> FeedForward
+SelfAttention --> attention
+CrossAttention --> attention
+@enduml
+```
+
+
+---
+transition: fade
 layout: two-cols-header
 ---
 # Lies and the Lying Liars who tell them
@@ -42,6 +149,7 @@ layout: two-cols-header
 <v-click at="7"><li>Write parallel code in parallel</li></v-click>
 <v-click at="9"><li><code>torch.compile</code> for speed</li></v-click>
 <v-click at="11"><li>Academic papers are a clear blueprint to write code</li></v-click>
+<v-click at="13"><li>No one gets fired for using PowerPoint / Google Slides</li></v-click>
 </ul>
 ::right::
 <ul>
@@ -51,6 +159,7 @@ layout: two-cols-header
 <v-click at="8"><li>Write it in serial</li></v-click>
 <v-click at="10"><li>No</li></v-click>
 <v-click at="12"><li>No</li></v-click>
+<v-click at="14"><li>Slidev</li></v-click>
 </ul>
 ---
 transition: slide-up
