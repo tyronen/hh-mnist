@@ -21,22 +21,29 @@ def create_composite_image(mnist_images, mnist_labels, num_images):
 
     # Define the 4 quadrant positions - top left, top right, bottom left, bottom right
     positions = [(0, 0), (0, 28), (28, 0), (28, 28)]
+    filled = [False, False, False, False]
 
     # Randomly select which positions to fill
-    positions_to_fill = sorted(random.sample(range(4), num_images))
-    selected_positions = [positions[i] for i in positions_to_fill]
+    positions_to_fill = random.sample(range(4), num_images)
+    for pos in positions_to_fill:
+        filled[pos] = True
 
     # Randomly select MNIST images
     indices = random.choices(range(len(mnist_images)), k=num_images)
+    last_index = 0
 
-    for i, pos in enumerate(selected_positions):
-        idx = indices[i]
+    for pos, is_filled in zip(positions, filled):
+        if not is_filled:
+            labels.append(PAD_TOKEN)
+            continue
         # Place the 28x28 MNIST image at the selected position
         y, x = pos
-        composite[0, y : y + 28, x : x + 28] = mnist_images[idx][
-            0
-        ]  # MNIST images are (1, 28, 28)
+        y += 28
+        x += 28
+        idx = indices[last_index]
+        composite[0, y, x] = mnist_images[idx][0]
         labels.append(mnist_labels[idx])
+        last_index += 1
 
     return composite, labels
 
@@ -165,7 +172,14 @@ def main():
     np.random.seed(42)
 
     # Load original MNIST data
-    transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
+    transform = v2.Compose(
+        [
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
+            # add mouse-like behaviour
+            v2.RandomAffine(degrees=10, translate=(0.1, 0.1)),
+        ]
+    )
 
     training_data = datasets.MNIST(
         root="data", train=True, download=True, transform=transform
