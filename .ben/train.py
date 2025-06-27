@@ -18,8 +18,6 @@ hyperparameters = {
     "epochs": 100,
     "patch_size": 14,
     "dim_model": 64,
-    "dim_k": 64,
-    "dim_v": 64,
     "dropout_rate": 0.1,
     "num_encoders": 6,
     "has_positional_encoding": True,
@@ -92,30 +90,14 @@ def main():
     )
     training_dataloader = DataLoader(training_data, batch_size=hyperparameters["batch_size"], shuffle=False)
     test_dataloader = DataLoader(test_data, batch_size=hyperparameters["batch_size"], shuffle=False)
-    if config.dim_k % config.num_attention_heads != 0:
-        print(f"Error: dim_k ({config.dim_k}) must be divisible by num_attention_heads ({config.num_attention_heads})")
-        possible_heads = []
-        for i in range(1, config.dim_k + 1):
-            if config.dim_k % i == 0 and config.dim_v % i == 0:
-                possible_heads.append(i)
-        print(f"Possible values for num_attention_heads that divide both dim_k ({config.dim_k}) and dim_v ({config.dim_v}): {possible_heads}")
-        wandb.finish(exit_code=0)
-        exit(1)
-    if config.dim_v % config.num_attention_heads != 0:
-        print(f"Error: dim_v ({config.dim_v}) must be divisible by num_attention_heads ({config.num_attention_heads})")
-        possible_heads = []
-        for i in range(1, config.dim_k + 1):
-            if config.dim_k % i == 0 and config.dim_v % i == 0:
-                possible_heads.append(i)
-        wandb.finish(exit_code=0)
-        print(f"Possible values for num_attention_heads that divide both dim_k ({config.dim_k}) and dim_v ({config.dim_v}): {possible_heads}")
-        exit(1)
+    dim_k = config.dim_model // config.num_attention_heads
+    dim_v = config.dim_model // config.num_attention_heads
 
     model = Classifier(
         patch_size=config.patch_size,
         dim_model=config.dim_model,
-        dim_k=config.dim_k,
-        dim_v=config.dim_v,
+        dim_k=dim_k,
+        dim_v=dim_v,
         dropout_rate=config.dropout_rate,
         has_positional_encoding=config.has_positional_encoding,
         has_input_norm=config.has_input_norm,
@@ -163,8 +145,6 @@ def main():
                 "patch_size": config.patch_size,
                 "patch_stride": config.patch_size,
                 "dim_model": config.dim_model,
-                "dim_k": config.dim_k,
-                "dim_v": config.dim_v,
                 "dropout_rate": config.dropout_rate,
                 "timestamp": datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
                 "has_positional_encoding": config.has_positional_encoding,

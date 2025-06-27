@@ -11,11 +11,9 @@ parameters:
   has_pre_attention_norm:
     values: [true, false]
   num_attention_heads:
-    max: 16
-    min: 3
-    distribution: int_uniform
+    values: [1, 2, 4, 8]
   patch_size:
-    values: [1, 2, 4, 7, 14, 28]
+    values: [2, 4, 7, 14]
   has_post_ffn_norm:
     values: [true, false]
   has_input_norm:
@@ -39,16 +37,6 @@ parameters:
     min: 512
     distribution: int_uniform
   dim_model:
-    max: 128
-    min: 32
-    distribution: int_uniform
+    values: [64, 128, 256]
   epochs:
     values: [100, 300, 450, 600]
-  dim_v:
-    max: 128
-    min: 32
-    distribution: int_uniform
-  dim_k:
-    max: 128
-    min: 32
-    distribution: int_uniform
