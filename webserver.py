@@ -107,6 +107,7 @@ def make_canvas(key_index):
         stroke_width=15,
         stroke_color="white",
         background_color="black",
+        display_toolbar=False,
         width=280,
         height=280,
         drawing_mode="freedraw",
@@ -130,7 +131,22 @@ def main():
     st.title("Digit Recogniser")
     st.markdown(INTRO)
 
-    left, right = st.columns(2)
+    # Add custom CSS to remove gaps between columns
+    st.markdown(
+        """
+        <style>
+        div[data-testid="column"] {
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        .block-container {
+            padding-top: 1.5rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    left, right = st.columns(2, gap="small")
     with left:
         canvasTL = make_canvas(0)
         canvasBL = make_canvas(2)
@@ -140,39 +156,44 @@ def main():
 
     model = load_model()
 
+    if st.button("Clear All", type="secondary"):
+        st.session_state.canvas_keys = [
+            random_string(),
+            random_string(),
+            random_string(),
+            random_string(),
+        ]
+        st.session_state.prediction = None
+        st.session_state.has_prediction = False
+        # Rerun to apply the new keys immediately
+        st.rerun()
+
     if st.button("Predict", type="primary"):
-        if not all(
-            [c.image_data is not None for c in (canvasTL, canvasTR, canvasBL, canvasBR)]
-        ):
-            st.error("Please draw a digit in **all four** squares before predicting.")
-        else:
-            tl = preprocess_image(canvasTL.image_data)
-            tr = preprocess_image(canvasTR.image_data)
-            bl = preprocess_image(canvasBL.image_data)
-            br = preprocess_image(canvasBR.image_data)
+        tl = preprocess_image(canvasTL.image_data)
+        tr = preprocess_image(canvasTR.image_data)
+        bl = preprocess_image(canvasBL.image_data)
+        br = preprocess_image(canvasBR.image_data)
 
-            composite = assemble_composite(tl, tr, bl, br).to(device)
+        composite = assemble_composite(tl, tr, bl, br).to(device)
 
-            with torch.no_grad():
-                # greedy autoregressive decode – predict up to 4 digits
-                input_seq = torch.full(
-                    (1, 5), BLANK_TOKEN, device=device, dtype=torch.long
-                )
-                input_seq[0, 0] = START_TOKEN
+        with torch.no_grad():
+            # greedy autoregressive decode – predict up to 4 digits
+            input_seq = torch.full((1, 5), BLANK_TOKEN, device=device, dtype=torch.long)
+            input_seq[0, 0] = START_TOKEN
 
-                output_digits = []
-                for pos in range(4):  # decoder positions 0…3
-                    logits = model(composite, input_seq)  # (1, 5, vocab)
-                    next_token = logits[0, pos].argmax().item()
+            output_digits = []
+            for pos in range(4):  # decoder positions 0…3
+                logits = model(composite, input_seq)  # (1, 5, vocab)
+                next_token = logits[0, pos].argmax().item()
 
-                    if next_token == END_TOKEN:
-                        break
+                if next_token == END_TOKEN:
+                    break
 
-                    output_digits.append(next_token)
-                    input_seq[0, pos + 1] = next_token  # feed predicted token back
+                output_digits.append(next_token)
+                input_seq[0, pos + 1] = next_token  # feed predicted token back
 
-                st.session_state.prediction = output_digits
-            st.session_state.has_prediction = True
+            st.session_state.prediction = output_digits
+        st.session_state.has_prediction = True
 
     if st.session_state.has_prediction:
         pred_str = " ".join(str(d) for d in st.session_state.prediction)
