@@ -294,8 +294,7 @@ class ComplexTransformer(nn.Module):
     def forward(self, images, input_seqs):
         encoded = self.base_transformer(images)
         text = self.embedding(input_seqs)
-        # for this to work, text length must always be 5!
-        text = text + self.pe(self.rng)
+        text = text + self.pe(self.rng[: text.size(1)])
         for decoder in self.decoder_series:
             text = decoder(encoded, text)
         return self.linear(text)

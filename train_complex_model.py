@@ -7,6 +7,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import ReduceLROnPlateau, LRScheduler
 from torch.utils.data import DataLoader, TensorDataset
 import logging
+import subprocess
 
 from tqdm import tqdm
 
@@ -35,6 +36,12 @@ parser.add_argument("--entity", help="W and B entity", default="mlx-institute")
 parser.add_argument("--project", help="W and B project", default="encoder-decoder")
 args = parser.parse_args()
 
+
+def get_git_commit():
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("ascii").strip()
+    except Exception:
+        return "unknown"
 
 def make_dataloader(path, device, shuffle):
     tensors = torch.load(path, map_location="cpu")
@@ -193,10 +200,12 @@ def run_single_training(config=None):
 
 def main():
     utils.setup_logging()
+    config = dict(hyperparameters)  # makes a shallow copy
+    config["git_commit"] = get_git_commit()
     run = wandb.init(
         entity=args.entity,
         project=args.project,
-        config=hyperparameters,
+        config=config,
     )
 
     run_single_training(hyperparameters)
