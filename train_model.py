@@ -36,7 +36,7 @@ sweep_config = {
     "method": "grid",  # can be 'grid', 'random', or 'bayes'
     "metric": {"name": "test_accuracy", "goal": "maximize"},
     "parameters": {
-        "batch_size": {"values": [2048]},
+        "batch_size": {"values": [1024]},
         "learning_rate": {"values": [5e-4]},
         "epochs": {"values": [95, 196]},
         "patience": {"values": [-1]},
