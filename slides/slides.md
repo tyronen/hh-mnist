@@ -73,12 +73,13 @@ level: 2
 - 6 layer encoder & 6 layer decoder
 - Embedding dim: 256/8; num heads: 8; MLP dim: 128
 - 84x84 images represented as 36 patches
+- Training method: teacher forcing; inference method: greedy
 
 <br>
 
 ##### Pre-training:
 
-- Train: 80K, Valid: 20K, Test: 20K images
+- Train: 80K, Valid: 20K, Test: 20K images (from MNIST dataset)
 - 10 epochs, LR=e-4
 - Accurracy: 92.75%, Edit Distance: 0.08
 
@@ -86,7 +87,7 @@ level: 2
 
 ##### Fine-tuning:
 
-- Train: 450, Valid/Test: 50 images
+- Train: 450, Valid/Test: 50 images (manual annotation)
 - 50 epochs, LR=e-5
 - Accuracy: 21%, Edit Distance: 1.45
 
