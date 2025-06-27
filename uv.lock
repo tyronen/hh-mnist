@@ -608,6 +608,8 @@ name = "hh-mnist"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "torch" },
+    { name = "torchvision" },
     { name = "tqdm" },
     { name = "wandb" },
 ]
@@ -624,6 +626,8 @@ inference = [
 
 [package.metadata]
 requires-dist = [
+    { name = "torch", specifier = ">=2.7.1" },
+    { name = "torchvision", specifier = ">=0.22.1" },
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "wandb", specifier = ">=0.20.1" },
 ]
