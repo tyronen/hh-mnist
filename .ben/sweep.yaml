@@ -1,0 +1,54 @@
+program: train.py
+method: bayes
+metric:
+  goal: maximize
+  name: "test_accuracy"
+parameters:
+  has_post_attention_norm:
+    values: [true, false]
+  has_positional_encoding:
+    values: [true, false]
+  has_pre_attention_norm:
+    values: [true, false]
+  num_attention_heads:
+    max: 16
+    min: 3
+    distribution: int_uniform
+  patch_size:
+    values: [1, 2, 4, 7, 14, 28]
+  has_post_ffn_norm:
+    values: [true, false]
+  has_input_norm:
+    values: [true, false]
+  has_final_norm:
+    values: [true, false]
+  learning_rate:
+    max: 0.002
+    min: 0.0005
+    distribution: uniform
+  num_encoders:
+    max: 12
+    min: 3
+    distribution: int_uniform
+  dropout_rate:
+    max: 0.2
+    min: 0.05
+    distribution: uniform
+  batch_size:
+    max: 2048
+    min: 512
+    distribution: int_uniform
+  dim_model:
+    max: 128
+    min: 32
+    distribution: int_uniform
+  epochs:
+    values: [100, 300, 450, 600]
+  dim_v:
+    max: 128
+    min: 32
+    distribution: int_uniform
+  dim_k:
+    max: 128
+    min: 32
+    distribution: int_uniform

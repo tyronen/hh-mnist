@@ -9,14 +9,14 @@ from model import Classifier
 from datetime import datetime
 import utils as utils
 from tqdm import tqdm
+import wandb
 import os
 
 hyperparameters = {
     "batch_size": 1024,
-    "learning_rate": 0.001,
-    "epochs": 300,
-    "patch_kernal_size": 14,
-    "patch_stride": 14,
+    "learning_rate": 0.0005,
+    "epochs": 100,
+    "patch_size": 14,
     "dim_model": 64,
     "dim_k": 64,
     "dim_v": 64,
@@ -30,7 +30,6 @@ hyperparameters = {
     "has_post_ffn_norm": True,
     "has_final_norm": False,
     # multi-head attention
-    "has_multi_head_attention": True,
     "num_attention_heads": 8
 }
 
@@ -40,9 +39,9 @@ hyperparameters = {
 # normalization_layer_4: After adding positional encoding
 # normalization_layer_5: Before final logits projection
 
-
 def train(model, dataloader, loss_function, optimizer, device, epoch_num):
     model.train()
+    running_loss = 0
     for batch_idx, (images, labels) in tqdm(enumerate(dataloader), total=len(dataloader), desc="Epoch " + str(epoch_num) + " Training"):
         images = images.to(device)
         labels = labels.to(device)
@@ -51,6 +50,10 @@ def train(model, dataloader, loss_function, optimizer, device, epoch_num):
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
+        running_loss += loss.item()
+
+    average_loss = running_loss / len(dataloader)
+    return average_loss
 
 def test(dataloader, model, device, epoch_num, loss_function):
     test_datasize = len(dataloader.dataset)
@@ -69,9 +72,17 @@ def test(dataloader, model, device, epoch_num, loss_function):
     test_loss /= num_batches
     correct_rate = correct / test_datasize
     print(f"Epoch {epoch_num} Test Loss: {test_loss:.4f}, Test Accuracy: {100*correct_rate:.1f}, ({correct} out of {test_datasize})")
-    return correct_rate
+    return correct_rate, test_loss
 
 def main():
+    wandb.init(
+        project="Transformer-MNIST", 
+        config=hyperparameters,
+        name=f"model-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+    )
+
+    config = wandb.config
+
     transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
     training_data = datasets.MNIST(
         root="data", train=True, download=True, transform=transform
@@ -81,73 +92,90 @@ def main():
     )
     training_dataloader = DataLoader(training_data, batch_size=hyperparameters["batch_size"], shuffle=False)
     test_dataloader = DataLoader(test_data, batch_size=hyperparameters["batch_size"], shuffle=False)
-    if hyperparameters["has_multi_head_attention"]:
-        if hyperparameters["dim_k"] % hyperparameters["num_attention_heads"] != 0:
-            print(f"Error: dim_k ({hyperparameters['dim_k']}) must be divisible by num_attention_heads ({hyperparameters['num_attention_heads']})")
-            possible_heads = []
-            for i in range(1, hyperparameters['dim_k'] + 1):
-                if hyperparameters['dim_k'] % i == 0 and hyperparameters['dim_v'] % i == 0:
-                    possible_heads.append(i)
-            print(f"Possible values for num_attention_heads that divide both dim_k ({hyperparameters['dim_k']}) and dim_v ({hyperparameters['dim_v']}): {possible_heads}")
-            exit(1)
-        if hyperparameters["dim_v"] % hyperparameters["num_attention_heads"] != 0:
-            print(f"Error: dim_v ({hyperparameters['dim_v']}) must be divisible by num_attention_heads ({hyperparameters['num_attention_heads']})")
-            exit(1)
+    if config.dim_k % config.num_attention_heads != 0:
+        print(f"Error: dim_k ({config.dim_k}) must be divisible by num_attention_heads ({config.num_attention_heads})")
+        possible_heads = []
+        for i in range(1, config.dim_k + 1):
+            if config.dim_k % i == 0 and config.dim_v % i == 0:
+                possible_heads.append(i)
+        print(f"Possible values for num_attention_heads that divide both dim_k ({config.dim_k}) and dim_v ({config.dim_v}): {possible_heads}")
+        wandb.finish(exit_code=0)
+        exit(1)
+    if config.dim_v % config.num_attention_heads != 0:
+        print(f"Error: dim_v ({config.dim_v}) must be divisible by num_attention_heads ({config.num_attention_heads})")
+        possible_heads = []
+        for i in range(1, config.dim_k + 1):
+            if config.dim_k % i == 0 and config.dim_v % i == 0:
+                possible_heads.append(i)
+        wandb.finish(exit_code=0)
+        print(f"Possible values for num_attention_heads that divide both dim_k ({config.dim_k}) and dim_v ({config.dim_v}): {possible_heads}")
+        exit(1)
 
     model = Classifier(
-        patch_size=hyperparameters["patch_kernal_size"],
-        stride=hyperparameters["patch_stride"],
-        dim_model=hyperparameters["dim_model"],
-        dim_k=hyperparameters["dim_k"],
-        dim_v=hyperparameters["dim_v"],
-        dropout_rate=hyperparameters["dropout_rate"],
-        has_positional_encoding=hyperparameters["has_positional_encoding"],
-        has_input_norm=hyperparameters["has_input_norm"],
-        has_post_attention_norm=hyperparameters["has_post_attention_norm"],
-        has_post_ffn_norm=hyperparameters["has_post_ffn_norm"],
-        has_pre_attention_norm=hyperparameters["has_pre_attention_norm"],
-        has_final_norm=hyperparameters["has_final_norm"],
-        num_encoders=hyperparameters["num_encoders"],
-        has_multi_head_attention=hyperparameters["has_multi_head_attention"],
-        num_heads=hyperparameters["num_attention_heads"]
+        patch_size=config.patch_size,
+        dim_model=config.dim_model,
+        dim_k=config.dim_k,
+        dim_v=config.dim_v,
+        dropout_rate=config.dropout_rate,
+        has_positional_encoding=config.has_positional_encoding,
+        has_input_norm=config.has_input_norm,
+        has_post_attention_norm=config.has_post_attention_norm,
+        has_post_ffn_norm=config.has_post_ffn_norm,
+        has_pre_attention_norm=config.has_pre_attention_norm,
+        has_final_norm=config.has_final_norm,
+        num_encoders=config.num_encoders,
+        num_heads=config.num_attention_heads
     )
 
     loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=hyperparameters["learning_rate"])
+    optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
     device = utils.get_device()
     model.to(device)
     
-    best_score = 0  # Initialize best_score
-    best_model_state = None  # Store the best model state
+    best_score = 0                  # Initialize best_score
+    best_model_state = None     # Store the best model state
 
-    for epoch_num in range(hyperparameters["epochs"]):
-        train(model, training_dataloader, loss_function, optimizer, device, epoch_num)
-        correct_rate = test(test_dataloader, model, device, epoch_num, loss_function)
+    for epoch_num in range(config.epochs):
+        train_loss = train(model, training_dataloader, loss_function, optimizer, device, epoch_num)
+        correct_rate, test_loss = test(test_dataloader, model, device, epoch_num, loss_function)
+        wandb.log({
+            "test_accuracy": correct_rate,
+            "train_loss": train_loss,
+            "test_loss": test_loss,
+            "epoch": epoch_num
+        })
+        print({
+            "test_accuracy": correct_rate,
+            "train_loss": train_loss,
+            "test_loss": test_loss,
+            "epoch": epoch_num
+        })
         if correct_rate > best_score:
             best_score = correct_rate
             # Save the best model state (deep copy to avoid reference issues)
             best_model_state = {
                 "model": model.state_dict().copy(),
                 "optimizer": optimizer.state_dict().copy(),
-                "epochs": hyperparameters["epochs"],
-                "learning_rate": hyperparameters["learning_rate"],
-                "batch_size": hyperparameters["batch_size"],
-                "patch_kernal_size": hyperparameters["patch_kernal_size"],
-                "patch_stride": hyperparameters["patch_stride"],
-                "dim_model": hyperparameters["dim_model"],
-                "dim_k": hyperparameters["dim_k"],
-                "dim_v": hyperparameters["dim_v"],
-                "dropout_rate": hyperparameters["dropout_rate"],
+                "epoch_num": epoch_num,
+                "epochs": config.epochs,
+                "learning_rate": config.learning_rate,
+                "batch_size": config.batch_size,
+                "patch_size": config.patch_size,
+                "patch_stride": config.patch_size,
+                "dim_model": config.dim_model,
+                "dim_k": config.dim_k,
+                "dim_v": config.dim_v,
+                "dropout_rate": config.dropout_rate,
                 "timestamp": datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
-                "has_positional_encoding": hyperparameters["has_positional_encoding"],
-                "has_input_norm": hyperparameters["has_input_norm"],
-                "has_post_attention_norm": hyperparameters["has_post_attention_norm"],
-                "has_post_ffn_norm": hyperparameters["has_post_ffn_norm"],
-                "has_pre_attention_norm": hyperparameters["has_pre_attention_norm"],
-                "has_final_norm": hyperparameters["has_final_norm"],
-                "num_encoders": hyperparameters["num_encoders"],
-                "has_multi_head_attention": hyperparameters["has_multi_head_attention"],
-                "score": correct_rate
+                "has_positional_encoding": config.has_positional_encoding,
+                "has_input_norm": config.has_input_norm,
+                "has_post_attention_norm": config.has_post_attention_norm,
+                "has_post_ffn_norm": config.has_post_ffn_norm,
+                "has_pre_attention_norm": config.has_pre_attention_norm,
+                "has_final_norm": config.has_final_norm,
+                "num_encoders": config.num_encoders,
+                "num_attention_heads": config.num_attention_heads,
+                "score": correct_rate,
             }
             print(f"New best score: {correct_rate:.4f}")
 

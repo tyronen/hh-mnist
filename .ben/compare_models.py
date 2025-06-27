@@ -74,7 +74,6 @@ def load_checkpoint_info(checkpoint_path):
             'num_encoders': checkpoint.get('num_encoders', 1),
             'has_positional_encoding': has_positional_encoding,  # Actually detected from state_dict
             'normalization': norm_compact,  # Compact representation
-            'has_multi_head_attention': checkpoint.get('has_multi_head_attention', False),
             'num_heads': checkpoint.get('num_heads', 1),  # Default to 1 head if not specified
         }
         
@@ -92,7 +91,6 @@ def load_checkpoint_info(checkpoint_path):
                 'has_normalization_layer_3': checkpoint.get('has_post_attention_norm', False),
                 'has_normalization_layer_4': checkpoint.get('has_post_ffn_norm', False),
                 'has_normalization_layer_5': checkpoint.get('has_final_norm', False),
-                'has_multi_head_attention': checkpoint.get('has_multi_head_attention', False),
             })
         else:
             info.update({
@@ -108,7 +106,6 @@ def load_checkpoint_info(checkpoint_path):
             # Use new parameter names for current Classifier constructor
             model_params = {
                 'patch_size': info['patch_kernal_size'],
-                'stride': info['patch_stride'],
                 'dim_model': info['dim_model'],
                 'dim_k': info['dim_k'],
                 'dim_v': info['dim_v'],
@@ -120,7 +117,6 @@ def load_checkpoint_info(checkpoint_path):
                 'has_post_ffn_norm': info.get('has_post_ffn_norm', info['has_normalization_layer_4']),
                 'has_final_norm': info.get('has_final_norm', info['has_normalization_layer_5']),
                 'num_encoders': info['num_encoders'],
-                'has_multi_head_attention': info['has_multi_head_attention'],
                 'num_heads': checkpoint.get('num_heads', 1)  # Default to 1 head if not specified
             }
             
@@ -192,7 +188,7 @@ def print_summary(df):
     # Top 5 performers
     print("TOP 5 PERFORMERS:")
     print("-" * 50)
-    available_cols = ['checkpoint', 'score', 'dim_model', 'num_encoders', 'dropout_rate', 'learning_rate', 'has_positional_encoding', 'normalization', 'has_multi_head_attention', 'num_heads', 'total_params']
+    available_cols = ['checkpoint', 'score', 'dim_model', 'num_encoders', 'dropout_rate', 'learning_rate', 'has_positional_encoding', 'normalization', 'num_heads', 'total_params']
     display_cols = [col for col in available_cols if col in df.columns]
     top_5 = df.nlargest(5, 'score')[display_cols].copy()
     # Format score as percentage
@@ -223,7 +219,7 @@ def print_detailed_comparison(df):
     display_columns = [
         'checkpoint', 'score', 'dim_model', 'dim_k', 'dim_v', 'num_encoders', 'dropout_rate',
         'learning_rate', 'batch_size', 'patch_kernal_size', 
-        'has_positional_encoding', 'normalization', 'has_multi_head_attention', 'num_heads',
+        'has_positional_encoding', 'normalization', 'num_heads',
         'total_params', 'timestamp'
     ]
     

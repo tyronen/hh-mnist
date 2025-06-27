@@ -102,13 +102,9 @@ class Encoder(nn.Module):
             has_pre_attention_norm: bool,
             has_post_attention_norm: bool,
             has_post_ffn_norm: bool,
-            has_multi_head_attention: bool,
             num_heads: int):
         super().__init__()
-        if has_multi_head_attention:
-            self.attention = MultiHeadAttention(dim_model, dim_k, dim_v, num_heads)
-        else:
-            self.attention = SingleHeadAttention(dim_model, dim_k, dim_v)
+        self.attention = MultiHeadAttention(dim_model, dim_k, dim_v, num_heads)
         self.feed_forward = FeedForward(dim_model, dim_model)
         if has_pre_attention_norm:
             self.pre_attention_norm = nn.LayerNorm(dim_model)
@@ -147,7 +143,6 @@ class Classifier(nn.Module):
     def __init__(
             self, 
             patch_size: int, 
-            stride: int, 
             dim_model: int, 
             dim_k: int, 
             dim_v,
@@ -159,10 +154,9 @@ class Classifier(nn.Module):
             has_pre_attention_norm: bool,
             has_final_norm: bool,
             num_encoders: int,
-            has_multi_head_attention: bool,
             num_heads: int):
         super().__init__()
-        self.patch_projection = PatchProjection(patch_size=patch_size, stride=stride, dim_model=dim_model)
+        self.patch_projection = PatchProjection(patch_size=patch_size, stride=patch_size, dim_model=dim_model)
         if has_positional_encoding:
             self.positional_encoding = PositionalEncoding(dim_model=dim_model, num_patches=4)
         else:
@@ -177,7 +171,6 @@ class Classifier(nn.Module):
                     has_pre_attention_norm=has_pre_attention_norm,
                     has_post_attention_norm=has_post_attention_norm,
                     has_post_ffn_norm=has_post_ffn_norm,
-                    has_multi_head_attention=has_multi_head_attention,
                     num_heads=num_heads
                 ) for _ in range(num_encoders)]
         )
