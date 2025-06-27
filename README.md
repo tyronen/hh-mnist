@@ -12,8 +12,8 @@ source ssh.sh
 # encoder-only
 uv run train_model.py --entity wandb-team --project wandb-project
 # encoder-decoder
-uv run create_composite_images.py
-uv run train_complex_model.py --entity wandb-team --project wandb-project
+uv run --group cuda124 create_composite_images.py
+uv run --group cuda124 train_complex_model.py --entity wandb-team --project wandb-project
 ```
 
 Data will be placed in the `data` directory.

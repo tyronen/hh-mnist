@@ -7,11 +7,12 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import ReduceLROnPlateau, LRScheduler
 from torch.utils.data import DataLoader, TensorDataset
 import logging
+import subprocess
 
 from tqdm import tqdm
 
 import utils
-from create_composite_images import PAD_TOKEN, END_TOKEN
+from utils import END_TOKEN, BLANK_TOKEN
 from models import ComplexTransformer
 import wandb
 
@@ -27,7 +28,7 @@ hyperparameters = {
     "num_heads": 8,
     "seed": 42,
     "dropout": 0.1,
-    "train_pe": False,
+    "train_pe": True,
 }
 
 parser = argparse.ArgumentParser(description="Train simple model")
@@ -35,6 +36,12 @@ parser.add_argument("--entity", help="W and B entity", default="mlx-institute")
 parser.add_argument("--project", help="W and B project", default="encoder-decoder")
 args = parser.parse_args()
 
+
+def get_git_commit():
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("ascii").strip()
+    except Exception:
+        return "unknown"
 
 def make_dataloader(path, device, shuffle):
     tensors = torch.load(path, map_location="cpu")
@@ -47,7 +54,12 @@ def make_dataloader(path, device, shuffle):
     num_workers = 8 if device.type == "cuda" else 0
     persistent_workers = num_workers > 0
     return DataLoader(
-        dataset, batch_size=hyperparameters["batch_size"], shuffle=shuffle, pin_memory=pin_memory, num_workers=num_workers, persistent_workers=persistent_workers
+        dataset,
+        batch_size=hyperparameters["batch_size"],
+        shuffle=shuffle,
+        pin_memory=pin_memory,
+        num_workers=num_workers,
+        persistent_workers=persistent_workers,
     )
 
 
@@ -84,7 +96,7 @@ def run_batch(
                 )  # (B*seq_len)
 
                 total_loss += loss
-                mask = (output_seqs != PAD_TOKEN) & (output_seqs != END_TOKEN)
+                mask = output_seqs != END_TOKEN
                 pred = logits.argmax(-1)
                 batch_num_correct_digits = ((pred == output_seqs) & mask).sum().item()
                 num_correct_digits += batch_num_correct_digits
@@ -146,9 +158,9 @@ def run_single_training(config=None):
         num_coders=hyperparameters["num_coders"],
         num_heads=hyperparameters["num_heads"],
         dropout=hyperparameters["dropout"],
-        train_pe=hyperparameters["train_pe"]
+        train_pe=hyperparameters["train_pe"],
     ).to(device)
-    loss_fn = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN, label_smoothing=0.1)
+    loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=hyperparameters["learning_rate"])
 
     model = run_training(
@@ -186,10 +198,12 @@ def run_single_training(config=None):
 
 def main():
     utils.setup_logging()
+    config = dict(hyperparameters)  # makes a shallow copy
+    config["git_commit"] = get_git_commit()
     run = wandb.init(
         entity=args.entity,
         project=args.project,
-        config=hyperparameters,
+        config=config,
     )
 
     run_single_training(hyperparameters)
@@ -214,9 +228,7 @@ def run_training(
     wandb.define_metric("val_loss", summary="min")
     best_loss = float("inf")
     epochs_since_best = 0
-    scheduler = ReduceLROnPlateau(
-        optimizer, mode="min", patience=2, factor=0.5
-    )
+    scheduler = ReduceLROnPlateau(optimizer, mode="min", patience=2, factor=0.5)
     for epoch in range(config["epochs"]):
         train_token_accuracy, train_seq_accuracy, train_loss = run_batch(
             dataloader=train_dl,

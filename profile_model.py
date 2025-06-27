@@ -4,7 +4,6 @@ import time
 import utils
 from models import ComplexTransformer
 from train_complex_model import make_dataloader, hyperparameters
-from torch.cuda.amp import autocast, GradScaler
 
 def run_profiler():
     """Run a diagnostic to isolate performance bottlenecks."""
@@ -57,10 +56,10 @@ def run_profiler():
     dummy_input_seqs = torch.randint(0, 13, (batch_size, 5), device=device)
     
     # Use Automatic Mixed Precision (AMP) just like in training
-    scaler = GradScaler()
+    maybe_autocast, scaler = utils.amp_components(device, train=True)
 
     # Warm-up run (the first pass can be slow due to CUDA kernel compilation)
-    with autocast():
+    with maybe_autocast:
         _ = model(dummy_images, dummy_input_seqs)
 
     # Timed run
@@ -69,7 +68,7 @@ def run_profiler():
     start_time = time.time()
     
     for _ in range(num_trials):
-        with autocast():
+        with maybe_autocast:
             logits = model(dummy_images, dummy_input_seqs)
             # A dummy loss is fine for profiling
             loss = logits.sum()

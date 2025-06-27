@@ -15,8 +15,10 @@ dependencies = [
 
 [dependency-groups]
 inference = [
+    "matplotlib>=3.10.3",
+    "notebook>=7.4.3",
     "streamlit>=1.46.0",
     "streamlit-drawable-canvas>=0.9.3",
-    "torch>=2.2.0",
-    "torchvision>=0.17.0",
+    "torch>=2.6.0",
+    "torchvision>=0.22.0",
 ]

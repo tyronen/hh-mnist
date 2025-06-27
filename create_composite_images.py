@@ -8,10 +8,10 @@ import utils
 from tqdm import tqdm
 import logging
 
+from utils import START_TOKEN, END_TOKEN, BLANK_TOKEN
+
+
 # Define special tokens
-START_TOKEN = 10  # After digits 0-9
-END_TOKEN = 11
-PAD_TOKEN = 12  # For padding sequences
 
 
 def create_composite_image(mnist_images, mnist_labels, num_images):
@@ -21,22 +21,27 @@ def create_composite_image(mnist_images, mnist_labels, num_images):
 
     # Define the 4 quadrant positions - top left, top right, bottom left, bottom right
     positions = [(0, 0), (0, 28), (28, 0), (28, 28)]
+    filled = [False, False, False, False]
 
     # Randomly select which positions to fill
-    positions_to_fill = sorted(random.sample(range(4), num_images))
-    selected_positions = [positions[i] for i in positions_to_fill]
+    positions_to_fill = random.sample(range(4), num_images)
+    for pos in positions_to_fill:
+        filled[pos] = True
 
     # Randomly select MNIST images
     indices = random.choices(range(len(mnist_images)), k=num_images)
+    last_index = 0
 
-    for i, pos in enumerate(selected_positions):
-        idx = indices[i]
+    for pos, is_filled in zip(positions, filled):
+        if not is_filled:
+            labels.append(BLANK_TOKEN)
+            continue
         # Place the 28x28 MNIST image at the selected position
         y, x = pos
-        composite[0, y : y + 28, x : x + 28] = mnist_images[idx][
-            0
-        ]  # MNIST images are (1, 28, 28)
+        idx = indices[last_index]
+        composite[0, y : y + 28, x : x + 28] = mnist_images[idx][0]
         labels.append(mnist_labels[idx])
+        last_index += 1
 
     return composite, labels
 
@@ -46,20 +51,14 @@ def create_transformer_seqs(labels):
     # Input: START_TOKEN + labels (padded to max length)
     # Output: labels + END_TOKEN (padded to max length)
 
-    max_seq_len = 5  # START + up to 4 labels, or up to 4 labels + END
+    assert len(labels) == 4
 
-    # Input sequence: [START_TOKEN, label1, label2, ..., PAD, PAD]
-    input_seq = [START_TOKEN] + labels[:-1]
-    # because we use masked self-attention, we have to drop the last digit
-    # otherwise every time-step can still see its own answer through the attention identity path
-    # and you get the copy-shortcut/100 % accuracy bug.
-    while len(input_seq) < max_seq_len:
-        input_seq.append(PAD_TOKEN)
+    # Input sequence: [START_TOKEN, label1, label2]
+    # We don't truncate the labels, because this is now a fixed length
+    input_seq = [START_TOKEN] + labels
 
     # Output sequence: [label1, label2, ..., END_TOKEN]
     output_seq = labels + [END_TOKEN]
-    while len(output_seq) < max_seq_len:
-        output_seq.append(PAD_TOKEN)
 
     return torch.tensor(input_seq), torch.tensor(output_seq)
 
@@ -73,7 +72,7 @@ def generate_composite_dataset(mnist_dataset, size, distribution):
     # Convert MNIST data to lists for easier random access
     mnist_images = []
     mnist_labels = []
-    for img, label in mnist_dataset:
+    for img, label in tqdm(mnist_dataset, desc="Transforming MNIST"):
         mnist_images.append(img)
         mnist_labels.append(label)
 
@@ -145,7 +144,7 @@ def save_torch_dataset(images, input_seqs, output_seqs, filepath):
             "vocab_info": {
                 "start_token": START_TOKEN,
                 "end_token": END_TOKEN,
-                "pad_token": PAD_TOKEN,
+                "blank_token": BLANK_TOKEN,
                 "vocab_size": 13,  # 0-9 digits + START + END + PAD
             },
         },
@@ -165,7 +164,14 @@ def main():
     np.random.seed(42)
 
     # Load original MNIST data
-    transform = v2.Compose([v2.ToImage(), v2.ToDtype(torch.float32, scale=True)])
+    transform = v2.Compose(
+        [
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
+            # add mouse-like behaviour
+            v2.RandomAffine(degrees=10, translate=(0.1, 0.1)),
+        ]
+    )
 
     training_data = datasets.MNIST(
         root="data", train=True, download=True, transform=transform
