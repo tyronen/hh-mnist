@@ -20,9 +20,9 @@ import utils
 hyperparameters = {
     "batch_size": 2048,
     "learning_rate": 5e-4,
-    "epochs": 25,
+    "epochs": 95,
     "patience": 3,
-    "patch_size": 14,  # base MNIST images are 28x28, so patch size of 7 -> 16 patches (or 14 -> 4 patches)
+    "patch_size": 7,  # base MNIST images are 28x28
     "model_dim": 256,
     "ffn_dim": 2048,
     "num_encoders": 5,
