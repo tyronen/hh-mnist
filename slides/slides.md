@@ -206,6 +206,16 @@ Can a models with _thousands_ fewer parameters perform as well?
 
 ---
 
+## In the end, all you need is *time*...
+
+(on a big GPU)
+
+![](./images/epochs4eva.png)
+
+![](./images/imp.png)
+
+---
+
 ![](./images/9000.jpg)
 
 ---
