@@ -8,10 +8,10 @@ import utils
 from tqdm import tqdm
 import logging
 
+from utils import START_TOKEN, END_TOKEN, BLANK_TOKEN
+
+
 # Define special tokens
-START_TOKEN = 10  # After digits 0-9
-END_TOKEN = 11
-PAD_TOKEN = 12  # For padding sequences
 
 
 def create_composite_image(mnist_images, mnist_labels, num_images):
@@ -34,12 +34,12 @@ def create_composite_image(mnist_images, mnist_labels, num_images):
 
     for pos, is_filled in zip(positions, filled):
         if not is_filled:
-            labels.append(PAD_TOKEN)
+            labels.append(BLANK_TOKEN)
             continue
         # Place the 28x28 MNIST image at the selected position
         y, x = pos
         idx = indices[last_index]
-        composite[0, y: y + 28, x: x+ 28] = mnist_images[idx][0]
+        composite[0, y : y + 28, x : x + 28] = mnist_images[idx][0]
         labels.append(mnist_labels[idx])
         last_index += 1
 
@@ -51,21 +51,16 @@ def create_transformer_seqs(labels):
     # Input: START_TOKEN + labels (padded to max length)
     # Output: labels + END_TOKEN (padded to max length)
 
-    max_seq_len = 5  # START + up to 4 labels, or up to 4 labels + END
-    assert(len(labels) == max_seq_len - 1)
+    assert len(labels) == 4
 
-    # Input sequence: [START_TOKEN, label1, label2, ..., PAD, PAD]
-    input_seq = [START_TOKEN] + labels[:-1]
+    # Input sequence: [START_TOKEN, label1, label2]
     # because we use masked self-attention, we have to drop the last digit
     # otherwise every time-step can still see its own answer through the attention identity path
     # and you get the copy-shortcut/100 % accuracy bug.
-    while len(input_seq) < max_seq_len:
-        input_seq.append(PAD_TOKEN)
+    input_seq = [START_TOKEN] + labels[:-1]
 
     # Output sequence: [label1, label2, ..., END_TOKEN]
     output_seq = labels + [END_TOKEN]
-    while len(output_seq) < max_seq_len:
-        output_seq.append(PAD_TOKEN)
 
     return torch.tensor(input_seq), torch.tensor(output_seq)
 
@@ -151,7 +146,7 @@ def save_torch_dataset(images, input_seqs, output_seqs, filepath):
             "vocab_info": {
                 "start_token": START_TOKEN,
                 "end_token": END_TOKEN,
-                "pad_token": PAD_TOKEN,
+                "blank_token": BLANK_TOKEN,
                 "vocab_size": 13,  # 0-9 digits + START + END + PAD
             },
         },

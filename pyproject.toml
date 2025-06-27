@@ -13,6 +13,7 @@ dependencies = [
 
 [dependency-groups]
 inference = [
+    "matplotlib>=3.10.3",
     "notebook>=7.4.3",
     "streamlit>=1.46.0",
     "streamlit-drawable-canvas>=0.9.3",

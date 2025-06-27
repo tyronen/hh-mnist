@@ -11,7 +11,7 @@ import logging
 from tqdm import tqdm
 
 import utils
-from create_composite_images import PAD_TOKEN, END_TOKEN
+from utils import END_TOKEN, BLANK_TOKEN
 from models import ComplexTransformer
 import wandb
 
@@ -47,7 +47,12 @@ def make_dataloader(path, device, shuffle):
     num_workers = 8 if device.type == "cuda" else 0
     persistent_workers = num_workers > 0
     return DataLoader(
-        dataset, batch_size=hyperparameters["batch_size"], shuffle=shuffle, pin_memory=pin_memory, num_workers=num_workers, persistent_workers=persistent_workers
+        dataset,
+        batch_size=hyperparameters["batch_size"],
+        shuffle=shuffle,
+        pin_memory=pin_memory,
+        num_workers=num_workers,
+        persistent_workers=persistent_workers,
     )
 
 
@@ -84,7 +89,7 @@ def run_batch(
                 )  # (B*seq_len)
 
                 total_loss += loss
-                mask = (output_seqs != PAD_TOKEN) & (output_seqs != END_TOKEN)
+                mask = output_seqs != END_TOKEN
                 pred = logits.argmax(-1)
                 batch_num_correct_digits = ((pred == output_seqs) & mask).sum().item()
                 num_correct_digits += batch_num_correct_digits
@@ -146,11 +151,11 @@ def run_single_training(config=None):
         num_coders=hyperparameters["num_coders"],
         num_heads=hyperparameters["num_heads"],
         dropout=hyperparameters["dropout"],
-        train_pe=hyperparameters["train_pe"]
+        train_pe=hyperparameters["train_pe"],
     ).to(device)
-    if (device.type == "cuda"):
+    if device.type == "cuda":
         model = torch.compile(model)
-    loss_fn = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN, label_smoothing=0.1)
+    loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = optim.Adam(model.parameters(), lr=hyperparameters["learning_rate"])
 
     model = run_training(
@@ -216,9 +221,7 @@ def run_training(
     wandb.define_metric("val_loss", summary="min")
     best_loss = float("inf")
     epochs_since_best = 0
-    scheduler = ReduceLROnPlateau(
-        optimizer, mode="min", patience=2, factor=0.5
-    )
+    scheduler = ReduceLROnPlateau(optimizer, mode="min", patience=2, factor=0.5)
     for epoch in range(config["epochs"]):
         train_token_accuracy, train_seq_accuracy, train_loss = run_batch(
             dataloader=train_dl,

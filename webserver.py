@@ -2,7 +2,7 @@ import inspect
 import random
 import string
 
-from create_composite_images import START_TOKEN, END_TOKEN, PAD_TOKEN
+from utils import START_TOKEN, END_TOKEN, BLANK_TOKEN
 
 import streamlit as st
 import torch
@@ -26,7 +26,17 @@ def load_model():
     ctor_cfg = {k: v for k, v in config.items() if k in ctor_keys}
 
     model = models.ComplexTransformer(**ctor_cfg)
-    model.load_state_dict(checkpoint["model_state_dict"])
+
+    # Strip torch.compile prefixes if present
+    state_dict = checkpoint["model_state_dict"]
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        new_key = k
+        if k.startswith("_orig_mod."):
+            new_key = k[len("_orig_mod.") :]
+        new_state_dict[new_key] = v
+
+    model.load_state_dict(new_state_dict)
     model.to(device)  # keep parameters on the same device as inputs
     model.eval()
     return model
@@ -146,7 +156,7 @@ def main():
             with torch.no_grad():
                 # greedy autoregressive decode – predict up to 4 digits
                 input_seq = torch.full(
-                    (1, 5), PAD_TOKEN, device=device, dtype=torch.long
+                    (1, 5), BLANK_TOKEN, device=device, dtype=torch.long
                 )
                 input_seq[0, 0] = START_TOKEN
 

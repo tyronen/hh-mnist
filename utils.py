@@ -5,6 +5,11 @@ import torch
 from torch.cuda.amp import autocast, GradScaler
 
 
+START_TOKEN = 10  # After digits 0-9
+END_TOKEN = 11
+BLANK_TOKEN = 12
+
+
 SIMPLE_MODEL_FILE = "data/simple.pth"
 COMPLEX_MODEL_FILE = "data/complex.pth"
 
