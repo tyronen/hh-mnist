@@ -29,6 +29,9 @@ hyperparameters = {
     "has_post_attention_norm": True,
     "has_post_ffn_norm": True,
     "has_final_norm": False,
+    # multi-head attention
+    "has_multi_head_attention": True,
+    "num_attention_heads": 8
 }
 
 # normalization_layer_1: After patch projection
@@ -78,6 +81,18 @@ def main():
     )
     training_dataloader = DataLoader(training_data, batch_size=hyperparameters["batch_size"], shuffle=False)
     test_dataloader = DataLoader(test_data, batch_size=hyperparameters["batch_size"], shuffle=False)
+    if hyperparameters["has_multi_head_attention"]:
+        if hyperparameters["dim_k"] % hyperparameters["num_attention_heads"] != 0:
+            print(f"Error: dim_k ({hyperparameters['dim_k']}) must be divisible by num_attention_heads ({hyperparameters['num_attention_heads']})")
+            possible_heads = []
+            for i in range(1, hyperparameters['dim_k'] + 1):
+                if hyperparameters['dim_k'] % i == 0 and hyperparameters['dim_v'] % i == 0:
+                    possible_heads.append(i)
+            print(f"Possible values for num_attention_heads that divide both dim_k ({hyperparameters['dim_k']}) and dim_v ({hyperparameters['dim_v']}): {possible_heads}")
+            exit(1)
+        if hyperparameters["dim_v"] % hyperparameters["num_attention_heads"] != 0:
+            print(f"Error: dim_v ({hyperparameters['dim_v']}) must be divisible by num_attention_heads ({hyperparameters['num_attention_heads']})")
+            exit(1)
 
     model = Classifier(
         patch_size=hyperparameters["patch_kernal_size"],
@@ -92,7 +107,9 @@ def main():
         has_post_ffn_norm=hyperparameters["has_post_ffn_norm"],
         has_pre_attention_norm=hyperparameters["has_pre_attention_norm"],
         has_final_norm=hyperparameters["has_final_norm"],
-        num_encoders=hyperparameters["num_encoders"]
+        num_encoders=hyperparameters["num_encoders"],
+        has_multi_head_attention=hyperparameters["has_multi_head_attention"],
+        num_heads=hyperparameters["num_attention_heads"]
     )
 
     loss_function = nn.CrossEntropyLoss()
@@ -129,6 +146,7 @@ def main():
                 "has_pre_attention_norm": hyperparameters["has_pre_attention_norm"],
                 "has_final_norm": hyperparameters["has_final_norm"],
                 "num_encoders": hyperparameters["num_encoders"],
+                "has_multi_head_attention": hyperparameters["has_multi_head_attention"],
                 "score": correct_rate
             }
             print(f"New best score: {correct_rate:.4f}")

@@ -25,16 +25,37 @@ def load_checkpoint_info(checkpoint_path):
                     has_positional_encoding = True
                     break
         
-        # Create compact normalization representation
-        norm_layers = [
-            checkpoint.get('has_normalization_layer_1', False),
-            checkpoint.get('has_normalization_layer_2', False),
-            checkpoint.get('has_normalization_layer_3', False),
-            checkpoint.get('has_normalization_layer_4', False),
-            checkpoint.get('has_normalization_layer_5', False),
-        ]
-        # Convert to compact format: "x,x,x,4,x" where numbers show True positions
-        norm_compact = ','.join([str(i+1) if norm_layers[i] else 'x' for i in range(5)])
+        # Handle both old and new normalization parameter names
+        # Old format: has_normalization_layer_1 through has_normalization_layer_5
+        # New format: has_input_norm, has_pre_attention_norm, has_post_attention_norm, has_post_ffn_norm, has_final_norm
+        
+        # Check if this is a new format checkpoint
+        has_new_format = any(key.startswith('has_input_norm') or key.startswith('has_pre_attention_norm') 
+                           for key in checkpoint.keys())
+        
+        if has_new_format:
+            # New format normalization parameters
+            norm_layers = [
+                checkpoint.get('has_input_norm', False),
+                checkpoint.get('has_pre_attention_norm', False),
+                checkpoint.get('has_post_attention_norm', False),
+                checkpoint.get('has_post_ffn_norm', False),
+                checkpoint.get('has_final_norm', False),
+            ]
+            norm_names = ['inp', 'pre', 'post', 'ffn', 'fin']
+        else:
+            # Old format normalization parameters
+            norm_layers = [
+                checkpoint.get('has_normalization_layer_1', False),
+                checkpoint.get('has_normalization_layer_2', False),
+                checkpoint.get('has_normalization_layer_3', False),
+                checkpoint.get('has_normalization_layer_4', False),
+                checkpoint.get('has_normalization_layer_5', False),
+            ]
+            norm_names = ['1', '2', '3', '4', '5']
+        
+        # Convert to compact format: "inp,pre,post,ffn,fin" or "1,2,3,4,5" where names show True positions
+        norm_compact = ','.join([norm_names[i] if norm_layers[i] else 'x' for i in range(5)])
         
         # Extract hyperparameters and metrics
         info = {
@@ -49,32 +70,61 @@ def load_checkpoint_info(checkpoint_path):
             'dim_model': checkpoint.get('dim_model', 'Unknown'),
             'dim_k': checkpoint.get('dim_k', 'Unknown'),
             'dim_v': checkpoint.get('dim_v', 'Unknown'),
+            'dropout_rate': checkpoint.get('dropout_rate', 'N/A'),  # New parameter
             'num_encoders': checkpoint.get('num_encoders', 1),
             'has_positional_encoding': has_positional_encoding,  # Actually detected from state_dict
             'normalization': norm_compact,  # Compact representation
-            'has_normalization_layer_1': checkpoint.get('has_normalization_layer_1', False),
-            'has_normalization_layer_2': checkpoint.get('has_normalization_layer_2', False),
-            'has_normalization_layer_3': checkpoint.get('has_normalization_layer_3', False),
-            'has_normalization_layer_4': checkpoint.get('has_normalization_layer_4', False),
-            'has_normalization_layer_5': checkpoint.get('has_normalization_layer_5', False),
+            'has_multi_head_attention': checkpoint.get('has_multi_head_attention', False),
+            'num_heads': checkpoint.get('num_heads', 1),  # Default to 1 head if not specified
         }
+        
+        # Add individual normalization flags for model recreation (backward compatibility)
+        if has_new_format:
+            info.update({
+                'has_input_norm': checkpoint.get('has_input_norm', False),
+                'has_pre_attention_norm': checkpoint.get('has_pre_attention_norm', False),
+                'has_post_attention_norm': checkpoint.get('has_post_attention_norm', False),
+                'has_post_ffn_norm': checkpoint.get('has_post_ffn_norm', False),
+                'has_final_norm': checkpoint.get('has_final_norm', False),
+                # Map to old names for model creation compatibility
+                'has_normalization_layer_1': checkpoint.get('has_input_norm', False),
+                'has_normalization_layer_2': checkpoint.get('has_pre_attention_norm', False),
+                'has_normalization_layer_3': checkpoint.get('has_post_attention_norm', False),
+                'has_normalization_layer_4': checkpoint.get('has_post_ffn_norm', False),
+                'has_normalization_layer_5': checkpoint.get('has_final_norm', False),
+                'has_multi_head_attention': checkpoint.get('has_multi_head_attention', False),
+            })
+        else:
+            info.update({
+                'has_normalization_layer_1': checkpoint.get('has_normalization_layer_1', False),
+                'has_normalization_layer_2': checkpoint.get('has_normalization_layer_2', False),
+                'has_normalization_layer_3': checkpoint.get('has_normalization_layer_3', False),
+                'has_normalization_layer_4': checkpoint.get('has_normalization_layer_4', False),
+                'has_normalization_layer_5': checkpoint.get('has_normalization_layer_5', False),
+            })
         
         # Try to recreate model to count parameters
         try:
-            model = Classifier(
-                patch_size=info['patch_kernal_size'],
-                stride=info['patch_stride'],
-                dim_model=info['dim_model'],
-                dim_k=info['dim_k'],
-                dim_v=info['dim_v'],
-                has_positional_encoding=info['has_positional_encoding'],
-                has_normalization_layer_1=info['has_normalization_layer_1'],
-                has_normalization_layer_2=info['has_normalization_layer_2'],
-                has_normalization_layer_3=info['has_normalization_layer_3'],
-                has_normalization_layer_4=info['has_normalization_layer_4'],
-                has_normalization_layer_5=info['has_normalization_layer_5'],
-                num_encoders=info['num_encoders']  # Already defaults to 1
-            )
+            # Use new parameter names for current Classifier constructor
+            model_params = {
+                'patch_size': info['patch_kernal_size'],
+                'stride': info['patch_stride'],
+                'dim_model': info['dim_model'],
+                'dim_k': info['dim_k'],
+                'dim_v': info['dim_v'],
+                'dropout_rate': info['dropout_rate'] if info['dropout_rate'] != 'N/A' else 0.0,
+                'has_positional_encoding': info['has_positional_encoding'],
+                'has_input_norm': info.get('has_input_norm', info['has_normalization_layer_1']),
+                'has_pre_attention_norm': info.get('has_pre_attention_norm', info['has_normalization_layer_2']),
+                'has_post_attention_norm': info.get('has_post_attention_norm', info['has_normalization_layer_3']),
+                'has_post_ffn_norm': info.get('has_post_ffn_norm', info['has_normalization_layer_4']),
+                'has_final_norm': info.get('has_final_norm', info['has_normalization_layer_5']),
+                'num_encoders': info['num_encoders'],
+                'has_multi_head_attention': info['has_multi_head_attention'],
+                'num_heads': checkpoint.get('num_heads', 1)  # Default to 1 head if not specified
+            }
+            
+            model = Classifier(**model_params)
             total_params, trainable_params = count_parameters(model)
             info['total_params'] = total_params
             info['trainable_params'] = trainable_params
@@ -142,7 +192,9 @@ def print_summary(df):
     # Top 5 performers
     print("TOP 5 PERFORMERS:")
     print("-" * 50)
-    top_5 = df.nlargest(5, 'score')[['checkpoint', 'score', 'dim_model', 'num_encoders', 'learning_rate', 'has_positional_encoding', 'normalization', 'total_params']].copy()
+    available_cols = ['checkpoint', 'score', 'dim_model', 'num_encoders', 'dropout_rate', 'learning_rate', 'has_positional_encoding', 'normalization', 'has_multi_head_attention', 'num_heads', 'total_params']
+    display_cols = [col for col in available_cols if col in df.columns]
+    top_5 = df.nlargest(5, 'score')[display_cols].copy()
     # Format score as percentage
     top_5['score'] = top_5['score'].apply(lambda x: f"{x*100:.2f}%" if isinstance(x, (int, float)) else x)
     # Format parameters with commas
@@ -169,9 +221,10 @@ def print_detailed_comparison(df):
     
     # Select columns to display
     display_columns = [
-        'checkpoint', 'score', 'dim_model', 'dim_k', 'dim_v', 'num_encoders',
+        'checkpoint', 'score', 'dim_model', 'dim_k', 'dim_v', 'num_encoders', 'dropout_rate',
         'learning_rate', 'batch_size', 'patch_kernal_size', 
-        'has_positional_encoding', 'normalization', 'total_params', 'timestamp'
+        'has_positional_encoding', 'normalization', 'has_multi_head_attention', 'num_heads',
+        'total_params', 'timestamp'
     ]
     
     # Filter columns that exist in the dataframe

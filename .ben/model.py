@@ -9,7 +9,6 @@ import math
 # After mean pooling    (25, dim_model)
 # Final logits          (25, 10)
 
-
 class PatchProjection(nn.Module):
     def __init__(
             self, 
@@ -38,30 +37,60 @@ class FeedForward(nn.Module):
         x = self.linear_2(x)
         return x
 
-class Attention(nn.Module):
+class SelfAttentionHead(nn.Module):
     def __init__(self, dim_model, dim_k, dim_v):
         super().__init__()
         self.dk = dim_k
         self.wq = nn.Linear(dim_model, dim_k, bias=False)
         self.wk = nn.Linear(dim_model, dim_k, bias=False)
         self.wv = nn.Linear(dim_model, dim_v, bias=False)
-        self.w_o = nn.Linear(dim_v, dim_model, bias=False)
-    
+
     def forward(self, x):
         q = self.wq(x)
         k = self.wk(x)
         v = self.wv(x)
 
-        attention = self.scaled_dot_product_attention(q, k, v)
-        hidden_state = self.w_o(attention)
-        return hidden_state
-    
+        return self.scaled_dot_product_attention(q, k, v)
+
     def scaled_dot_product_attention(self, q, k, v):
         k_transpose = k.transpose(-2, -1)
         attention = (q @ k_transpose) / math.sqrt(self.dk)
         attention = torch.softmax(attention, dim=-1)
         return attention @ v
 
+class SingleHeadAttention(nn.Module):
+    def __init__(self, dim_model, dim_k, dim_v):
+        super().__init__()
+        self.attention = SelfAttentionHead(dim_model, dim_k, dim_v)
+        self.w_o = nn.Linear(dim_v, dim_model, bias=False)
+
+    def forward(self, x):
+        return self.w_o(self.attention(x))
+
+class MultiHeadAttention(nn.Module):
+    def __init__(
+            self, 
+            dim_model: int, 
+            dim_k: int, 
+            dim_v: int, 
+            num_heads: int):
+        super().__init__()
+        self.num_heads = num_heads
+        self.dim_k_per_head = dim_k // num_heads
+        self.dim_v_per_head = dim_v // num_heads
+        self.attention_heads = nn.ModuleList(
+            [
+                SelfAttentionHead(dim_model, self.dim_k_per_head, self.dim_v_per_head) for _ in range(num_heads)
+            ]
+        )
+        self.w_o = nn.Linear(dim_v, dim_model, bias=False)
+
+    def forward(self, x): # (batch_size, num_patches, dim_model)
+        head_outputs = []
+        for attention_head in self.attention_heads:
+            head_outputs.append(attention_head(x))
+        concat = torch.cat(head_outputs, dim=-1)
+        return self.w_o(concat)
 
 class Encoder(nn.Module):
     def __init__(
@@ -72,9 +101,14 @@ class Encoder(nn.Module):
             dropout_rate: float,
             has_pre_attention_norm: bool,
             has_post_attention_norm: bool,
-            has_post_ffn_norm: bool):
+            has_post_ffn_norm: bool,
+            has_multi_head_attention: bool,
+            num_heads: int):
         super().__init__()
-        self.attention = Attention(dim_model, dim_k, dim_v)
+        if has_multi_head_attention:
+            self.attention = MultiHeadAttention(dim_model, dim_k, dim_v, num_heads)
+        else:
+            self.attention = SingleHeadAttention(dim_model, dim_k, dim_v)
         self.feed_forward = FeedForward(dim_model, dim_model)
         if has_pre_attention_norm:
             self.pre_attention_norm = nn.LayerNorm(dim_model)
@@ -89,6 +123,7 @@ class Encoder(nn.Module):
         else:
             self.post_ffn_norm = None
         self.dropout = nn.Dropout(dropout_rate)
+
 
     def forward(self, x):
         original_x = x
@@ -123,7 +158,9 @@ class Classifier(nn.Module):
             has_post_ffn_norm: bool,
             has_pre_attention_norm: bool,
             has_final_norm: bool,
-            num_encoders: int):
+            num_encoders: int,
+            has_multi_head_attention: bool,
+            num_heads: int):
         super().__init__()
         self.patch_projection = PatchProjection(patch_size=patch_size, stride=stride, dim_model=dim_model)
         if has_positional_encoding:
@@ -139,7 +176,9 @@ class Classifier(nn.Module):
                     dropout_rate=dropout_rate,
                     has_pre_attention_norm=has_pre_attention_norm,
                     has_post_attention_norm=has_post_attention_norm,
-                    has_post_ffn_norm=has_post_ffn_norm
+                    has_post_ffn_norm=has_post_ffn_norm,
+                    has_multi_head_attention=has_multi_head_attention,
+                    num_heads=num_heads
                 ) for _ in range(num_encoders)]
         )
         if has_post_ffn_norm:
