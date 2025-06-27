@@ -61,5 +61,52 @@ level: 2
 
 <a href="http://localhost:8501" target="_blank">First Demo</a>
 
+---
 
-<PoweredBySlidev mt-10 />
+# Anton: Vision to Sequence with Fine-Tuning + [Demo](https://anton-dergunov.github.io/vision_to_sequence/)
+
+<div class="flex">
+  <div class="w-1/2 text-xs leading-tight list-disc">
+
+##### Architecture:
+
+- 6 layer encoder & 6 layer decoder
+- Embedding dim: 256/8; num heads: 8; MLP dim: 128
+- 84x84 images represented as 36 patches
+
+<br>
+
+##### Pre-training:
+
+- Train: 80K, Valid: 20K, Test: 20K images
+- 10 epochs, LR=e-4
+- Accurracy: 92.75%, Edit Distance: 0.08
+
+<br>
+
+##### Fine-tuning:
+
+- Train: 450, Valid/Test: 50 images
+- 50 epochs, LR=e-5
+- Accuracy: 21%, Edit Distance: 1.45
+
+<br>
+
+```
+| Correct         | Predicted       |
+|-----------------|-----------------|
+| [6, 3]          | [6, 3]          |
+| [6, 9, 6, 4, 3] | [6, 3, 6, 7, 3] |
+| [7, 3, 0, 6, 0] | [7, 7, 9, 6, 0] |
+```
+
+  </div>
+  <div class="w-1/2 flex justify-end">
+    <figure class="text-center">
+      <img src="/data_annotation.png" class="w-60" />
+      <figcaption>Data annotation</figcaption>
+    </figure>
+  </div>
+</div>
+
+---
