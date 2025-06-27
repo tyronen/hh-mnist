@@ -40,7 +40,7 @@ sweep_config = {
         "learning_rate": {"values": [5e-4]},
         "epochs": {"values": [95, 196]},
         "patience": {"values": [-1]},
-        "patch_size": {"values": [2, 4, 7]},
+        "patch_size": {"values": [2]},
         "model_dim": {"values": [256]},
         "ffn_dim": {"values": [2048]},
         "num_encoders": {"values": [5]},

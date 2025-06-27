@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 VOCAB_SIZE = 13  # digits 0-9, plus start, finish, pad
-PE_MAX_LEN = 64  # max length of pe, i.e. max number of patches we expect from an image
+PE_MAX_LEN = 196  # max length of pe, i.e. max number of patches we expect from an image
 
 
 # TODO: experiment with making the PE learnable
