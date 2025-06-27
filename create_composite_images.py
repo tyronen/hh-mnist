@@ -74,7 +74,7 @@ def generate_composite_dataset(mnist_dataset, size, distribution):
     # Convert MNIST data to lists for easier random access
     mnist_images = []
     mnist_labels = []
-    for img, label in mnist_dataset:
+    for img, label in tqdm(mnist_dataset, desc="Transforming MNIST"):
         mnist_images.append(img)
         mnist_labels.append(label)
 
