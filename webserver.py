@@ -132,21 +132,42 @@ def main():
     st.markdown(INTRO)
 
     # Add custom CSS to remove gaps between columns
-    st.markdown(
+    st.html(
         """
         <style>
-        div[data-testid="column"] {
+        .stColumn {
             padding-left: 0 !important;
             padding-right: 0 !important;
         }
+        .stMainBlockContainer {
+            max-width:590px;
+        }
+        .stHorizontalBlock .stVerticalBlock {
+            justify-content: flex-start;
+        }
+        .stHorizontalBlock .stElementContainer {
+          margin-top: -2rem;
+        }
+        
         .block-container {
             padding-top: 1.5rem;
         }
+        /* Green button for Predict */
+        .st-key-predict_btn > .stButton button {
+            background-color: #3CB371 !important;
+            color: white !important;
+            margin-top: 0;
+        }
+        /* Red button for Clear */
+        .st-key-clear_btn > .stButton button {
+            background-color: #DC143C !important;
+            color: white !important;
+            margin-top: 0;
+        }
         </style>
-        """,
-        unsafe_allow_html=True,
+        """
     )
-    left, right = st.columns(2, gap="small")
+    left, right = st.columns(2, gap=None)
     with left:
         canvasTL = make_canvas(0)
         canvasBL = make_canvas(2)
@@ -156,7 +177,7 @@ def main():
 
     model = load_model()
 
-    if st.button("Clear All", type="secondary"):
+    if st.button("Clear All", type="secondary", key="clear_btn"):
         st.session_state.canvas_keys = [
             random_string(),
             random_string(),
@@ -168,7 +189,7 @@ def main():
         # Rerun to apply the new keys immediately
         st.rerun()
 
-    if st.button("Predict", type="primary"):
+    if st.button("Predict", type="primary", key="predict_btn"):
         tl = preprocess_image(canvasTL.image_data)
         tr = preprocess_image(canvasTR.image_data)
         bl = preprocess_image(canvasBL.image_data)
