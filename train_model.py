@@ -33,18 +33,18 @@ hyperparameters = {
 }
 
 sweep_config = {
-    "method": "bayes",  # can be 'grid', 'random', or 'bayes'
+    "method": "grid",  # can be 'grid', 'random', or 'bayes'
     "metric": {"name": "test_accuracy", "goal": "maximize"},
     "parameters": {
         "batch_size": {"values": [2048]},
         "learning_rate": {"values": [5e-4]},
-        "epochs": {"values": [25, 32, 45, 64, 95]},
+        "epochs": {"values": [95, 196]},
         "patience": {"values": [-1]},
-        "patch_size": {"values": [7, 14]},
-        "model_dim": {"values": [256, 512]},
-        "ffn_dim": {"values": [1024, 2048]},
-        "num_encoders": {"values": [5, 6]},
-        "num_heads": {"values": [32, 64]},
+        "patch_size": {"values": [2, 4, 7]},
+        "model_dim": {"values": [256]},
+        "ffn_dim": {"values": [2048]},
+        "num_encoders": {"values": [5]},
+        "num_heads": {"values": [64]},
         "dropout": {"values": [0.15]},
         "weight_decay": {"values": [1e-4]},
     },
