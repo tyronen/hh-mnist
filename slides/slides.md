@@ -324,9 +324,9 @@ theme: seriph
 ---
 ```
 
-<img border="rounded" src="https://github.com/slidevjs/themes/blob/main/screenshots/theme-default/01.png?raw=true" alt="">
+<img border="rounded" src="https://github.com/tyronen/hh-mnist/blob/main/slides/images/pre-norm.png?raw=true" alt="">
 
-<img border="rounded" src="https://github.com/slidevjs/themes/blob/main/screenshots/theme-seriph/01.png?raw=true" alt="">
+<img border="rounded" src="https://github.com/tyronen/hh-mnist/blob/main/slides/images/post-norm.png?raw=true" alt="">
 
 </div>
 
