@@ -176,6 +176,7 @@ def main():
 
     if st.session_state.has_prediction:
         pred_str = " ".join(str(d) for d in st.session_state.prediction)
+        pred_str = pred_str.replace("12", "B")
         st.write(f"**Predicted digits (TL→TR→BL→BR):** {pred_str}")
 
 
