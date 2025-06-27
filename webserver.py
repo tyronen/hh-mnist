@@ -2,8 +2,6 @@ import inspect
 import random
 import string
 
-from utils import START_TOKEN, END_TOKEN, BLANK_TOKEN
-
 import streamlit as st
 import torch
 from PIL import Image, ImageOps
@@ -129,7 +127,7 @@ def main():
         ]
 
     st.title("Digit Recogniser")
-    st.markdown(INTRO)
+    st.info(INTRO)
 
     # Add custom CSS to remove gaps between columns
     st.html(
@@ -142,6 +140,10 @@ def main():
         .stMainBlockContainer {
             max-width:590px;
         }
+        .stAlert {
+          margin-bottom: 2rem;
+        }
+        
         .stHorizontalBlock .stVerticalBlock {
             justify-content: flex-start;
         }
@@ -164,6 +166,16 @@ def main():
             color: white !important;
             margin-top: 0;
         }
+        .prediction {
+            border:3px solid #3CB371; 
+            border-radius:12px; 
+            text-align:center; 
+            font-size:3rem;
+            color:#3CB371;
+            margin-top: 1rem;  
+            margin-bottom: 1rem;
+            font-weight:900;
+        }
         </style>
         """
     )
@@ -177,18 +189,6 @@ def main():
 
     model = load_model()
 
-    if st.button("Clear All", type="secondary", key="clear_btn"):
-        st.session_state.canvas_keys = [
-            random_string(),
-            random_string(),
-            random_string(),
-            random_string(),
-        ]
-        st.session_state.prediction = None
-        st.session_state.has_prediction = False
-        # Rerun to apply the new keys immediately
-        st.rerun()
-
     if st.button("Predict", type="primary", key="predict_btn"):
         tl = preprocess_image(canvasTL.image_data)
         tr = preprocess_image(canvasTR.image_data)
@@ -199,15 +199,17 @@ def main():
 
         with torch.no_grad():
             # greedy autoregressive decode – predict up to 4 digits
-            input_seq = torch.full((1, 5), BLANK_TOKEN, device=device, dtype=torch.long)
-            input_seq[0, 0] = START_TOKEN
+            input_seq = torch.full(
+                (1, 5), utils.BLANK_TOKEN, device=device, dtype=torch.long
+            )
+            input_seq[0, 0] = utils.START_TOKEN
 
             output_digits = []
             for pos in range(4):  # decoder positions 0…3
                 logits = model(composite, input_seq)  # (1, 5, vocab)
                 next_token = logits[0, pos].argmax().item()
 
-                if next_token == END_TOKEN:
+                if next_token == utils.END_TOKEN:
                     break
 
                 output_digits.append(next_token)
@@ -217,9 +219,53 @@ def main():
         st.session_state.has_prediction = True
 
     if st.session_state.has_prediction:
-        pred_str = " ".join(str(d) for d in st.session_state.prediction)
-        pred_str = pred_str.replace("12", "B")
-        st.write(f"**Predicted digits (TL→TR→BL→BR):** {pred_str}")
+        # Convert to display-friendly strings
+        def pretty(d):
+            return "B" if d == 12 else str(d)
+
+        preds = [pretty(d) for d in st.session_state.prediction]
+        # Pad to 4 predictions in case of early END
+        while len(preds) < 4:
+            preds.append("")
+
+        # Display in a 2x2 grid: TL, TR, BL, BR
+        st.markdown(
+            "<h3 style='text-align: center; color: #3CB371'>Predicted digits</h4>",
+            unsafe_allow_html=True,
+        )
+        top = st.columns(2, gap="small")
+        with top[0]:
+            st.markdown(
+                f"<div class='prediction'>{preds[0]}</div>",
+                unsafe_allow_html=True,
+            )
+        with top[1]:
+            st.markdown(
+                f"<div class='prediction'>{preds[1]}</div>",
+                unsafe_allow_html=True,
+            )
+        bottom = st.columns(2, gap="small")
+        with bottom[0]:
+            st.markdown(
+                f"<div class='prediction'>{preds[2]}</div>",
+                unsafe_allow_html=True,
+            )
+        with bottom[1]:
+            st.markdown(
+                f"<div class='prediction'>{preds[3]}</div>",
+                unsafe_allow_html=True,
+            )
+
+    if st.button("Clear All", type="secondary", key="clear_btn"):
+        st.session_state.canvas_keys = [
+            random_string(),
+            random_string(),
+            random_string(),
+            random_string(),
+        ]
+        st.session_state.prediction = None
+        st.session_state.has_prediction = False
+        st.rerun()
 
 
 if __name__ == "__main__":
