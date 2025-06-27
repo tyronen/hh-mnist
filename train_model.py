@@ -21,7 +21,7 @@ hyperparameters = {
     "batch_size": 2048,
     "learning_rate": 5e-4,
     "epochs": 95,
-    "patience": 3,
+    "patience": -1,
     "patch_size": 7,  # base MNIST images are 28x28
     "model_dim": 256,
     "ffn_dim": 2048,
