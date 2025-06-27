@@ -23,3 +23,12 @@ To run the webserver:
 ```
 uv run --group inference -- streamlit run webserver.py
 ```
+
+To run the slides
+
+```
+# must already have Node.js installed
+npm install -g pnpm 
+pnpm install
+pnpm dev
+```
