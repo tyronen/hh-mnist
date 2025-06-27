@@ -32,3 +32,18 @@ npm install -g pnpm
 pnpm install
 pnpm dev
 ```
+
+## Remote deploy
+
+# Build and deploy instructions
+
+Any hosting service accepting Docker will do. You need enough RAM for the model.
+
+### Setup
+
+1. Install Docker Engine on your server. Docker should be runnable by someone other than root. Follow the instructions
+   on the Docker website.
+2. Your server must have a static IP address.
+3. Create an entry in your `~/.ssh/config` file, or use `ssh-agent` to alias a name to your server that incorporates its
+   username and any private key needed to log into it.
+4. `docker context create server-name --docker "ssh://server-name"`
