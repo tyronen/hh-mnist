@@ -1,0 +1,10 @@
+services:
+  web:
+    build: .
+    ports:
+      - "${PORT}:${PORT}"
+    environment:
+      FILE_WATCHER: "${FILE_WATCHER}"
+      PORT: "${PORT}"
+    command:
+      sh -c "uv run --group inference -- streamlit run webserver.py --server.port=$${PORT} --server.address=0.0.0.0 --server.fileWatcherType=$${FILE_WATCHER}"
