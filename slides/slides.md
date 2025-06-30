@@ -136,88 +136,8 @@ CrossAttention --> attention
 
 
 ---
-transition: fade
+transition: slide-right
 layout: two-cols-header
----
-
-## Get your ViTamins
-
-My vision transformer plateaued hard at 96.7%...
-
-But my straightforward CNN from application project was a strong 99%!
-
-How could I push it over the line?
-
-- Positional encoding
-- Dropout
-- Layer normalisation (after patching)
-- AdamW
-- Augmentation
-- Sweeps!
-
-<div class="absolute inset-y-0 right-0 flex items-center pr-8">
-  <img src="./images/plateau.png" alt="Plateau" class="max-h-[80%]" />
-</div>
-
----
-
-## What's the craic with positional encoding
-
-![](./images/pe.png)
-
-````python {3-6}
-# Fixed sinusoidal positional encoding (original implementation)
-pe = torch.zeros(max_len, model_dim)
-position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-div_term = torch.exp(torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim))
-broadcast = position * div_term
-pe[:, 0::2] = torch.sin(broadcast)
-pe[:, 1::2] = torch.cos(broadcast)
-pe = pe.unsqueeze(0)  # add batch dimension
-self.register_buffer("pe", pe)
-````
-
-````python
-# or learnable, starting with a truncated normal dist.
-self.pe = nn.Parameter(torch.zeros(1, max_len, model_dim))
-nn.init.trunc_normal_(self.pe, std=0.02)
-````
-
----
-
-# Adam vs. AdamW
-
-![](./images/adamw.png)
-
----
-
-# Dimensionality reduction ?!
-
-Can a models with _thousands_ fewer parameters perform as well?
-
-![](./images/sweep.png)
-
-```sh
--rw-r--r--  1 dan dan  16M Jun 26 18:33 simple9899.pth
--rw-rw-r--  1 dan dan  26M Jun 26 18:21 simple9917.pth
-```
-
-![](./images/dims.png)
-
----
-
-## In the end, all you need is *time*...
-
-(on a big GPU)
-
-![](./images/epochs4eva.png)
-
-![](./images/imp.png)
-
----
-
-![](./images/9000.jpg)
-
 ---
 
 # Lies and the Lying Liars who tell them
@@ -302,3 +222,85 @@ transition: fade
     </figure>
   </div>
 </div>
+
+
+---
+transition: fade
+layout: two-cols-header
+---
+
+## Get your ViTamins
+
+My vision transformer plateaued hard at 96.7%...
+
+But my straightforward CNN from application project was a strong 99%!
+
+How could I push it over the line?
+
+- Positional encoding
+- Dropout
+- Layer normalisation (after patching)
+- AdamW
+- Augmentation
+- Sweeps!
+
+<div class="absolute inset-y-0 right-0 flex items-center pr-8">
+  <img src="./images/plateau.png" alt="Plateau" class="max-h-[80%]" />
+</div>
+
+---
+
+## What's the craic with positional encoding
+
+![](./images/pe.png)
+
+````python {3-6}
+# Fixed sinusoidal positional encoding (original implementation)
+pe = torch.zeros(max_len, model_dim)
+position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+div_term = torch.exp(torch.arange(0, model_dim, 2) * -(math.log(10_000.0) / model_dim))
+broadcast = position * div_term
+pe[:, 0::2] = torch.sin(broadcast)
+pe[:, 1::2] = torch.cos(broadcast)
+pe = pe.unsqueeze(0)  # add batch dimension
+self.register_buffer("pe", pe)
+````
+
+````python
+# or learnable, starting with a truncated normal dist.
+self.pe = nn.Parameter(torch.zeros(1, max_len, model_dim))
+nn.init.trunc_normal_(self.pe, std=0.02)
+````
+
+---
+
+# Adam vs. AdamW
+
+![](./images/adamw.png)
+
+---
+
+# Dimensionality reduction ?!
+
+Can a models with _thousands_ fewer parameters perform as well?
+
+![](./images/sweep.png)
+
+```sh
+-rw-r--r--  1 dan dan  16M Jun 26 18:33 simple9899.pth
+-rw-rw-r--  1 dan dan  26M Jun 26 18:21 simple9917.pth
+```
+
+![](./images/dims.png)
+
+---
+
+## In the end, all you need is *time*...
+
+(on a big GPU)
+
+![](./images/epochs4eva.png)
+
+![](./images/imp.png)
+![](./images/9000.jpg)
+
